@@ -1,0 +1,30 @@
+name: Задача для разработки
+description: Ограниченная задача с проверяемым результатом для человека или агента
+title: "[Task] "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Цель и контекст
+      description: Какое поведение нужно получить и зачем?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Объем и границы
+      description: Какие части затрагиваются? Что остается за рамками задачи?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерии приемки
+      description: Наблюдаемые результаты, команды проверки и важные ошибки.
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Контракты и зависимости
+      description: Связанные задачи, API, схема данных, конфигурация и ограничения совместимости.

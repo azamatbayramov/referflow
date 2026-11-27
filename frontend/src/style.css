@@ -1,0 +1,85 @@
+:root {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: #1b342c;
+  background: #f4f3ed;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+.page {
+  min-height: 100svh;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -1px;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 80px 0;
+}
+
+.eyebrow {
+  margin: 0 0 28px;
+  padding: 9px 15px;
+  border: 1px solid #c9d3c6;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+h1 {
+  margin: 0;
+  max-width: 960px;
+  font-size: clamp(36px, 6.4vw, 76px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+  overflow-wrap: break-word;
+}
+
+.intro {
+  max-width: 480px;
+  margin: 28px 0 0;
+  color: #526257;
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+footer {
+  padding-top: 24px;
+  border-top: 1px solid #d7ddd2;
+  color: #526257;
+  font-size: 13px;
+  line-height: 1.6;
+}
