@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import CouponUseForm from './CouponUseForm.vue'
+import RedemptionHistory from './RedemptionHistory.vue'
 
 type Input = {
   discount_type: 'percent' | 'fixed'
@@ -43,6 +45,7 @@ const query = ref(''),
   hasMore = ref(false),
   loading = ref(false),
   busy = ref(false)
+const usageRevision = ref(0)
 const form = ref(false),
   error = ref(''),
   notice = ref(''),
@@ -276,6 +279,24 @@ async function revoke() {
         e instanceof Error ? e.message : 'Не удалось отозвать купон.'
   } finally {
     if (alive) busy.value = false
+  }
+}
+async function refreshUsage() {
+  if (!selected.value) return
+  const id = selected.value.id
+  try {
+    const detail = await api(`/coupons/${id}`, undefined, 'GET')
+    if (!alive || selected.value?.id !== id) return
+    selected.value = detail.coupon
+    events.value = detail.events
+    usageRevision.value++
+    await load()
+  } catch (e) {
+    if (alive)
+      error.value =
+        e instanceof Error
+          ? e.message
+          : 'Обновите купон, чтобы проверить счетчик.'
   }
 }
 function close() {
@@ -553,6 +574,22 @@ onBeforeUnmount(() => {
             <h4>Ограничения по услугам</h4>
             <p>{{ selected.restrictions }}</p>
           </section>
+          <CouponUseForm
+            :key="selected.id"
+            :coupon="selected"
+            :csrf-token="csrfToken"
+            :refresh-token="usageRevision"
+            @expired="emit('expired')"
+            @changed="refreshUsage"
+          />
+          <RedemptionHistory
+            :coupon-id="selected.id"
+            :csrf-token="csrfToken"
+            :refresh-token="usageRevision"
+            title="История этого купона"
+            @expired="emit('expired')"
+            @changed="refreshUsage"
+          />
           <p v-if="selected.revoked_at" class="error">
             Отозван {{ new Date(selected.revoked_at).toLocaleString('ru-RU') }}.
             Причина: {{ selected.revoke_reason }}

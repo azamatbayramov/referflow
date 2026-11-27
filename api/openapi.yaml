@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Referflow API
-  version: 0.4.0
-  description: Specialist sessions, client cards and coupon issuance/revocation. Redemptions and public QR pages are planned.
+  version: 0.5.0
+  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public QR pages are planned.
 servers:
   - url: /
 paths:
@@ -723,6 +723,275 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+  /api/redemptions:
+    post:
+      operationId: redeemCoupon
+      summary: Confirm coupon use by an existing own active client
+      description: Checks owner, revocation, exact expiry and total/personal active-use limits atomically under the coupon row
+        lock. Captures the nominal discount and manual confirmations. The per-specialist UUID key applies across all coupons.
+        Replay returns the same operation, including cancellation, even if the coupon/client later becomes unavailable. A new
+        key is required for an explicit replacement. No price, visit ID or caller timestamp is accepted.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - coupon_id
+              - client_id
+              - single_coupon_confirmed
+              properties:
+                coupon_id:
+                  type: string
+                  format: uuid
+                client_id:
+                  type: string
+                  format: uuid
+                single_coupon_confirmed:
+                  type: boolean
+                  const: true
+                  description: Specialist manually confirms one coupon for the actual appointment. No visit record exists.
+                first_visit_confirmed:
+                  type: boolean
+                  default: false
+                  description: Must be true when the coupon requires the first visit, including visits before Referflow. Never
+                    inferred from empty client history.
+      responses:
+        '201':
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '200':
+          description: Replay in its current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon, client, operation or requested history filter absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '409':
+          description: Idempotency key already committed with another payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '422':
+          description: coupon_revoked, coupon_expired, total_limit_reached, personal_limit_reached, client_archived or confirmation_required;
+            no operation committed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/redemptions/search:
+    post:
+      operationId: searchRedemptions
+      summary: Read coupon-use history for own client and/or coupon
+      description: Requires at least one filter. Both provided filters are ANDed. Includes canceled uses and archived clients,
+        newest first, 50 records per page. This is not a complete visit history or proof of the first visit.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              anyOf:
+              - required:
+                - coupon_id
+              - required:
+                - client_id
+              properties:
+                coupon_id:
+                  type: string
+                  format: uuid
+                client_id:
+                  type: string
+                  format: uuid
+                offset:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  default: 0
+      responses:
+        '200':
+          description: Own operation history
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - has_more
+                properties:
+                  items:
+                    type: array
+                    maxItems: 50
+                    items:
+                      $ref: '#/components/schemas/Redemption'
+                  has_more:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon, client, operation or requested history filter absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/redemptions/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getRedemption
+      summary: Read own immutable use and its cancellation audit
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon, client, operation or requested history filter absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/redemptions/{id}/cancel:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: cancelRedemption
+      summary: Cancel a mistaken use and release limits exactly once
+      description: The coupon row is locked before the operation. First reason, author and time are retained on repeated/concurrent
+        cancellation. Original operation and confirmations remain. Revoked/expired coupons remain unavailable; archived clients
+        can still have erroneous uses canceled. No restore, delete or move endpoint exists.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: Canceled or already canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Redemption'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon, client, operation or requested history filter absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
 components:
   securitySchemes:
     sessionCookie:
@@ -902,7 +1171,7 @@ components:
         used_count:
           type: integer
           minimum: 0
-          description: Zero until redemption is implemented; lookup does not increment this value.
+          description: Number of active (not canceled) confirmed uses; lookup never changes it.
         status:
           type: string
           enum:
@@ -952,6 +1221,85 @@ components:
         occurred_at:
           type: string
           format: date-time
+    Redemption:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - coupon_id
+      - client_id
+      - author_id
+      - coupon_code
+      - client_name
+      - author_name
+      - discount_type
+      - value
+      - single_coupon_confirmed
+      - first_visit_confirmed
+      - first_visit_required
+      - confirmed_at
+      - canceled_at
+      - canceled_by
+      - canceled_by_name
+      - cancel_reason
+      properties:
+        id:
+          type: string
+          format: uuid
+        coupon_id:
+          type: string
+          format: uuid
+        client_id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        coupon_code:
+          type: string
+          pattern: ^[0-9]{6}$
+        client_name:
+          type: string
+        author_name:
+          type: string
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          description: Nominal discount captured at confirmation, exact decimal with two fractional digits; not a final appointment
+            price.
+        single_coupon_confirmed:
+          type: boolean
+          const: true
+        first_visit_confirmed:
+          type: boolean
+        first_visit_required:
+          type: boolean
+        confirmed_at:
+          type: string
+          format: date-time
+          description: Server wall-clock at the serialized decision, after lock waits.
+        canceled_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        canceled_by:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        canceled_by_name:
+          type:
+          - string
+          - 'null'
+        cancel_reason:
+          type:
+          - string
+          - 'null'
     Status:
       type: object
       additionalProperties: false
@@ -959,7 +1307,7 @@ components:
       properties:
         status:
           type: string
-          enum: [too_many_requests, not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
+          enum: [coupon_revoked, coupon_expired, total_limit_reached, personal_limit_reached, client_archived, confirmation_required, too_many_requests, not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
   responses:
     BadRequest:
       description: Malformed, extra, or invalid input fields

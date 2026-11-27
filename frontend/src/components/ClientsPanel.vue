@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import RedemptionHistory from './RedemptionHistory.vue'
 
 type Client = {
   id: string
@@ -38,6 +39,7 @@ const matches = ref<Client[]>([])
 const duplicatesChecked = ref(false)
 const acknowledge = ref(false)
 const events = ref<Event[]>([])
+const historyRevision = ref(0)
 const editor = ref<HTMLElement | null>(null)
 const editorTitle = ref<HTMLElement | null>(null)
 let creationKey = crypto.randomUUID()
@@ -154,6 +156,7 @@ async function open(client: Client) {
     name.value = detail.client.name
     phone.value = detail.client.phone
     events.value = detail.events
+    historyRevision.value++
     matches.value = []
     acknowledge.value = false
     duplicatesChecked.value = false
@@ -486,8 +489,15 @@ onBeforeUnmount(() => {
                 {{ new Date(event.occurred_at).toLocaleString('ru-RU') }}
               </li>
             </ol>
-          </details></template
-        >
+          </details>
+          <RedemptionHistory
+            :client-id="selected.id"
+            :csrf-token="csrfToken"
+            title="Использования купонов клиента"
+            :refresh-token="historyRevision"
+            @expired="emit('expired')"
+          />
+        </template>
       </section>
       <div v-else class="client-editor editor-empty">
         <p class="eyebrow">КЛИЕНТЫ ПОД РУКОЙ</p>
