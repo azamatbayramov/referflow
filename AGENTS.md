@@ -6,7 +6,7 @@ Referflow is a Go + Vue monorepo. This baseline contains infrastructure only: no
 
 Read `README.md`, the relevant `docs/` page, and the nearest nested `AGENTS.md` before editing. The user request defines the task scope; do not copy personal profiles into repository instructions.
 
-For coupon/client/visit work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These describe planned behavior, not shipped features. V1 uses manual client and completed-visit entry in Referflow; Google Sheets and other CRM integrations are out of scope. Preserve the minimal data scope and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
+For coupon/client work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These describe planned behavior, not shipped features. V1 records clients and coupon redemptions; visit records (including hidden ones), Google Sheets, and other CRM integrations are out of scope. First-visit eligibility and one-coupon-per-visit rely on specialist confirmation; do not claim automatic enforcement without visit data or substitute a client-per-day limit. Preserve the minimal data scope and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
 
 | Area | Ownership |
 | --- | --- |
