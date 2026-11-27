@@ -1,26 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { expect, test } from '@playwright/test'
+import { manage } from './helpers'
 
 // Compose by default; local native PostgreSQL/API can use the same scenarios.
-function manage(args: string[], input = '') {
-  if (process.env.E2E_MANAGE_BIN) {
-    execFileSync(process.env.E2E_MANAGE_BIN, args, {
-      input,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-  } else {
-    execFileSync(
-      'docker',
-      ['compose', 'exec', '-T', 'api', 'manage', ...args],
-      {
-        cwd: '..',
-        input,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    )
-  }
-}
+
 function expire(token: string) {
   const hash = createHash('sha256').update(token).digest('hex')
   const sql = `UPDATE sessions SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE token_hash=decode('${hash}','hex');`

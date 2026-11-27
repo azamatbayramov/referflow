@@ -51,7 +51,7 @@ jobs:
       - name: PostgreSQL integration checks
         env:
           TEST_DATABASE_URL: postgres://referflow@127.0.0.1:5432/referflow_test?sslmode=disable
-        run: go test -race -count=1 -tags=integration ./internal/auth
+        run: go test -race -count=1 -tags=integration ./internal/auth ./internal/clients
       - run: go build -trimpath -o bin/api ./cmd/api
       - run: go build -trimpath -o bin/manage ./cmd/manage
 

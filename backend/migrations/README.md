@@ -28,3 +28,7 @@ after the database starts; production deployment performs the same separate step
 Run `make test-integration` with `TEST_DATABASE_URL` pointing to a disposable
 PostgreSQL instance. Tests create and remove only their own random schemas.
 See [authentication](../../docs/authentication.md) and [deployment](../../docs/deployment.md).
+
+`003_clients.sql` adds owner-scoped client cards and immutable operation events.
+It is additive; rolling back to the login-based authentication version preserves
+these tables. See [client cards](../../docs/clients.md).
