@@ -183,7 +183,7 @@ test('public QR, image and paper share live terms without clients or consumption
   }
   const downloadEvent = page.waitForEvent('download')
   await page
-    .getByRole('button', { name: 'Сохранить изображение', exact: true })
+    .getByRole('button', { name: 'Сохранить купон', exact: true })
     .click()
   const download = await downloadEvent
   expect(download.suggestedFilename()).toBe(`referflow-${coupon.code}.png`)
@@ -196,6 +196,7 @@ test('public QR, image and paper share live terms without clients or consumption
       document.body.dataset.printed = 'yes'
     }
   })
+  await page.locator('.public-extra > summary').click()
   await page.getByRole('button', { name: 'Распечатать', exact: true }).click()
   await expect(page.locator('body')).toHaveAttribute('data-printed', 'yes')
   await page.emulateMedia({ media: 'print' })
@@ -275,6 +276,7 @@ test('public QR, image and paper share live terms without clients or consumption
   await page
     .getByRole('button', { name: new RegExp(`№ ${coupon.code}.*Открыть`) })
     .click()
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click()
   await expect(
     page.getByRole('link', { name: 'Открыть карточку для клиента' }),
   ).toHaveAttribute('href', `/c/${coupon.id}`)
@@ -357,6 +359,7 @@ test('expired, missing and unavailable public pages never show a stale usable co
   await expect(
     page.getByRole('article').getByText('Истек срок', { exact: true }),
   ).toBeVisible()
+  await page.locator('.public-extra > summary').click()
   await page.route('**/api/public/coupons/*', (route) =>
     route.fulfill({
       status: 503,

@@ -28,7 +28,7 @@ test('issue percent coupon, find generated code, inspect terms and permanently r
   page,
   context,
   baseURL,
-}) => {
+}, info) => {
   await login(page)
   const session = await (await context.request.get('/api/auth/session')).json()
   const headers = {
@@ -40,9 +40,9 @@ test('issue percent coupon, find generated code, inspect terms and permanently r
     data: { name: 'Тестовый Рекомендатель' },
   })
   const client = await clientResponse.json()
-  await page.getByRole('button', { name: 'Создать купон', exact: true }).click()
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
   await page.getByLabel('Скидка, %', { exact: true }).fill('12,50')
-  await page.getByLabel('Без общего лимита', { exact: true }).uncheck()
+  await page.getByLabel('Общий лимит', { exact: true }).selectOption('false')
   await page.getByLabel('Всего использований', { exact: true }).fill('5')
   await page
     .getByLabel('Только первое посещение специалиста', { exact: true })
@@ -54,19 +54,27 @@ test('issue percent coupon, find generated code, inspect terms and permanently r
   await page
     .getByLabel('Ограничения по услугам (необязательно)')
     .fill('Тестовое ограничение\nВторая строка без обрезки')
-  await page.getByText('Кому выдан (необязательно)', { exact: true }).click()
+  await page
+    .getByText('Кто передаст купон (необязательно)', { exact: true })
+    .click()
   await page
     .getByLabel('Найти клиента', { exact: true })
     .fill('Тестовый Рекомендатель')
   await page.getByRole('button', { name: 'Искать', exact: true }).click()
   await expect(page.locator('#referrer-client option')).toHaveCount(2)
   await page
-    .getByLabel('Кому выдан купон', { exact: true })
+    .getByLabel('Клиент, которому выдан купон', { exact: true })
     .selectOption(client.id)
-  await page
-    .getByRole('button', { name: 'Сохранить купон', exact: true })
-    .click()
-  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('issue-form.png'),
+    fullPage: true,
+  })
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
+  await expect(page.getByText('Купон выдан.', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('share-coupon.png'),
+    fullPage: true,
+  })
   const issued = await (
     await context.request.post('/api/coupons/search', { headers, data: {} })
   ).json()
@@ -76,20 +84,26 @@ test('issue percent coupon, find generated code, inspect terms and permanently r
   await expect(
     page.getByRole('heading', { name: `Купон № ${code}`, exact: true }),
   ).toBeVisible()
-  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Купон выдан.', { exact: true })).toBeVisible()
   await expect(page.getByText('12,50 %', { exact: true })).toBeVisible()
   await expect(
-    page.getByText('До 31.12.2099 включительно (МСК, UTC+3)', { exact: true }),
+    page
+      .getByRole('region', { name: 'Передать купон' })
+      .getByText('До 31.12.2099 включительно (МСК, UTC+3)', { exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByText('Только первое посещение', { exact: true }),
+    page.getByText('Только первое посещение специалиста', { exact: true }),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Закрыть', exact: true }).click()
+  await page
+    .getByRole('button', { name: '← Назад к купонам', exact: true })
+    .click()
   await page.getByLabel('Номер купона', { exact: true }).fill(code)
   await page.getByRole('button', { name: 'Найти', exact: true }).click()
   await page
     .getByRole('button', { name: new RegExp(`№ ${code}.*Открыть`) })
     .click()
+  await page.getByRole('button', { name: 'История', exact: true }).click()
+  await page.locator('.coupon-revoke > summary').click()
   await page
     .getByLabel('Причина отзыва', { exact: true })
     .fill('Ошибка выдачи: тест')
@@ -141,22 +155,26 @@ test('fixed perpetual coupon survives lost response with independent unlimited b
       await route.abort('failed')
     } else await route.continue()
   })
-  await page.getByRole('button', { name: 'Создать купон', exact: true }).click()
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
   await page.getByLabel('Вид скидки', { exact: true }).selectOption('fixed')
   await page.getByLabel('Скидка, ₽', { exact: true }).fill('350,25')
-  await page.getByLabel('Без лимита на клиента', { exact: true }).check()
   await page
-    .getByRole('button', { name: 'Сохранить купон', exact: true })
-    .click()
+    .getByLabel('На одного клиента', { exact: true })
+    .selectOption('true')
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
   await expect(
     page.getByRole('button', { name: 'Повторить создание', exact: true }),
   ).toBeVisible()
   await page
     .getByRole('button', { name: 'Повторить создание', exact: true })
     .click()
-  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Купон выдан.', { exact: true })).toBeVisible()
   await expect(page.getByText('350,25 ₽', { exact: true })).toBeVisible()
-  await expect(page.getByText('Бессрочно', { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Передать купон' })
+      .getByText('Бессрочно', { exact: true }),
+  ).toBeVisible()
   const session = await (await context.request.get('/api/auth/session')).json()
   const headers = {
     Origin: new URL(baseURL!).origin,

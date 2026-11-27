@@ -19,6 +19,7 @@ async function login(page: Page) {
   await page.getByLabel('Логин', { exact: true }).fill(user)
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
+  await page.getByRole('button', { name: 'Клиенты', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Карточки клиентов' }),
   ).toBeVisible()

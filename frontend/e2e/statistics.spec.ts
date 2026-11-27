@@ -22,6 +22,7 @@ async function login(page: Page, context: BrowserContext, baseURL: string) {
   await page.getByLabel('Логин', { exact: true }).fill(login)
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
+  await page.getByRole('button', { name: 'Клиенты', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Карточки клиентов', exact: true }),
   ).toBeVisible()
@@ -50,6 +51,7 @@ async function statistics(
   await expect(page.getByTestId('stat-share')).toHaveText(share)
 }
 async function chooseClient(page: Page) {
+  await page.getByRole('button', { name: 'Использовать', exact: true }).click()
   const form = page.getByRole('region', {
     name: 'Использовать купон',
     exact: true,
@@ -57,7 +59,7 @@ async function chooseClient(page: Page) {
   await form
     .getByLabel('Найти получателя скидки', { exact: true })
     .fill('Клиент пилота')
-  await form.getByRole('button', { name: 'Найти клиента', exact: true }).click()
+  await form.getByRole('button', { name: 'Найти', exact: true }).click()
   await expect(form.locator('#redemption-client option')).toHaveCount(2)
   const id = await form
     .locator('#redemption-client option')
@@ -67,6 +69,7 @@ async function chooseClient(page: Page) {
   return form
 }
 async function cancelFirst(page: Page, reason: string) {
+  await page.getByRole('button', { name: 'История', exact: true }).click()
   const history = page.getByRole('region', {
     name: 'История этого купона',
     exact: true,
@@ -109,16 +112,14 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
   ).toBeVisible()
   await statistics(page, [0, 0, 0, 0, 0, 0], /^—$/)
   await page.getByRole('button', { name: 'Купоны', exact: true }).click()
-  await page.getByRole('button', { name: 'Создать купон', exact: true }).click()
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
   await page
     .getByLabel('Только первое посещение специалиста', { exact: true })
     .check()
-  await page.getByLabel('Без общего лимита', { exact: true }).uncheck()
+  await page.getByLabel('Общий лимит', { exact: true }).selectOption('false')
   await page.getByLabel('Всего использований', { exact: true }).fill('1')
-  await page
-    .getByRole('button', { name: 'Сохранить купон', exact: true })
-    .click()
-  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
+  await expect(page.getByText('Купон выдан.', { exact: true })).toBeVisible()
   const firstCoupon = (
     await (
       await context.request.post('/api/coupons/search', { headers, data: {} })
@@ -147,14 +148,17 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
   ).toBeVisible()
   await statistics(page, [1, 1, 1, 1, 1, 0], /^100\s*%$/)
   await page.getByRole('button', { name: 'Купоны', exact: true }).click()
-  await page.getByRole('button', { name: 'Создать купон', exact: true }).click()
+  await page
+    .getByRole('button', { name: '← Назад к купонам', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
   await page.getByLabel('Вид скидки', { exact: true }).selectOption('fixed')
   await page.getByLabel('Скидка, ₽', { exact: true }).fill('350,25')
-  await page.getByLabel('Без лимита на клиента', { exact: true }).check()
   await page
-    .getByRole('button', { name: 'Сохранить купон', exact: true })
-    .click()
-  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+    .getByLabel('На одного клиента', { exact: true })
+    .selectOption('true')
+  await page.getByRole('button', { name: 'Выдать купон', exact: true }).click()
+  await expect(page.getByText('Купон выдан.', { exact: true })).toBeVisible()
   const secondCoupon = (
     await (
       await context.request.post('/api/coupons/search', { headers, data: {} })
@@ -171,6 +175,8 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
       form.getByText('Использование подтверждено.', { exact: true }),
     ).toBeVisible()
   }
+  await page.getByRole('button', { name: 'История', exact: true }).click()
+  await page.locator('.coupon-revoke > summary').click()
   await page
     .getByLabel('Причина отзыва', { exact: true })
     .fill('Завершена тестовая выдача')
@@ -252,6 +258,7 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
   await expect(
     page.getByLabel('Применения купона', { exact: true }),
   ).toHaveValue('all')
+  await page.locator('.coupon-filters > summary').click()
   await page
     .getByLabel('Применения купона', { exact: true })
     .selectOption('unused')

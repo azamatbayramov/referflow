@@ -25,6 +25,7 @@ const checked = ref(''),
   exporting = ref(false)
 const linkInput = ref<HTMLInputElement | null>(null)
 const fallbackCopy = ref(false)
+const moreActions = ref(false)
 let controller: AbortController | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let alive = true
@@ -158,7 +159,7 @@ onBeforeUnmount(() => {
           >referflow</span
         ></a
       >
-      <a class="public-login" href="/">Вход специалиста</a>
+      <span class="header-note">Электронный купон</span>
     </header>
     <main class="public-coupon-main">
       <div v-if="state === 'loading'" class="center-state" aria-busy="true">
@@ -233,34 +234,43 @@ onBeforeUnmount(() => {
             class="primary"
             type="button"
             :disabled="exporting"
+            @click="exportCard('image')"
+          >
+            Сохранить купон
+          </button>
+          <button
+            class="secondary"
+            type="button"
+            :disabled="exporting"
             @click="copyLink"
           >
             Скопировать ссылку
           </button>
-          <button
-            class="secondary"
-            type="button"
-            :disabled="exporting"
-            @click="exportCard('image')"
+          <details
+            class="public-extra"
+            :open="moreActions"
+            @toggle="moreActions = ($event.target as HTMLDetailsElement).open"
           >
-            Сохранить изображение
-          </button>
-          <button
-            class="secondary"
-            type="button"
-            :disabled="exporting"
-            @click="exportCard('print')"
-          >
-            Распечатать
-          </button>
-          <button
-            class="secondary"
-            type="button"
-            :disabled="exporting"
-            @click="load"
-          >
-            Обновить статус
-          </button>
+            <summary>Печать и проверка</summary>
+            <div class="public-secondary-actions">
+              <button
+                class="secondary"
+                type="button"
+                :disabled="exporting"
+                @click="exportCard('print')"
+              >
+                Распечатать
+              </button>
+              <button
+                class="secondary"
+                type="button"
+                :disabled="exporting"
+                @click="load"
+              >
+                Обновить статус
+              </button>
+            </div>
+          </details>
           <label v-if="fallbackCopy" class="public-copy-fallback"
             >Ссылка на купон<input
               ref="linkInput"
@@ -269,6 +279,7 @@ onBeforeUnmount(() => {
               @focus="linkInput?.select()"
           /></label>
           <p v-if="notice" role="status">{{ notice }}</p>
+          <a class="public-login" href="/">Вход специалиста</a>
         </section>
       </template>
       <p v-if="actionError" class="error public-controls" role="alert">
