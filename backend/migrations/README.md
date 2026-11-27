@@ -32,3 +32,8 @@ See [authentication](../../docs/authentication.md) and [deployment](../../docs/d
 `003_clients.sql` adds owner-scoped client cards and immutable operation events.
 It is additive; rolling back to the login-based authentication version preserves
 these tables. See [client cards](../../docs/clients.md).
+
+`004_coupons.sql` adds coupons, issuance/revocation events and per-specialist
+lookup budgets. It also adds an owner/ID unique client index for the composite
+referrer FK. Existing migrations remain unchanged. Rolling back to client cards
+preserves the added tables. See [coupons](../../docs/coupons.md).

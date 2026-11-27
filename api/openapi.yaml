@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Referflow API
-  version: 0.3.0
-  description: Specialist sessions, client cards and infrastructure. Coupon behavior is not implemented.
+  version: 0.4.0
+  description: Specialist sessions, client cards and coupon issuance/revocation. Redemptions and public QR pages are planned.
 servers:
   - url: /
 paths:
@@ -397,6 +397,340 @@ paths:
         '503': *id009
         '404': *id010
         '409': *id011
+  /api/coupons:
+    post:
+      operationId: createCoupon
+      summary: Issue a standalone coupon with immutable terms
+      description: Owner comes only from the session. UUIDv4 identifies the coupon and will back a future public QR page; no
+        public endpoint is implemented in this phase. Replay returns the same coupon in its current state and cannot revive
+        it. Issuance and its event commit atomically.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - discount_type
+              - value
+              properties:
+                code:
+                  type: string
+                  maxLength: 20
+                  default: ''
+                  description: 'Optional manual paper number: 1–6 ASCII digits, spaces/hyphens removed, left-padded to six digits.
+                    Empty generates a cryptographically random six-digit code. Permanent uniqueness per specialist.'
+                discount_type:
+                  type: string
+                  enum:
+                  - percent
+                  - fixed
+                value:
+                  type: string
+                  pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+                  description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma
+                    or period input; dot with two digits in responses.'
+                restrictions:
+                  type: string
+                  maxLength: 2000
+                  default: ''
+                  description: Optional plain text; line breaks are preserved and never silently truncated.
+                total_limit:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  maximum: 2147483647
+                  default: null
+                per_client_limit:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  maximum: 2147483647
+                  default: 1
+                  description: Omitted defaults to 1. Explicit null means unlimited, independently of total_limit.
+                first_visit_only:
+                  type: boolean
+                  default: false
+                expires_on:
+                  type:
+                  - string
+                  - 'null'
+                  format: date
+                  default: null
+                  description: Last valid date inclusive at fixed Moscow UTC+03:00. Expiry is next day 00:00 UTC+03:00, exclusive.
+                    Past dates are permitted and immediately show expired.
+                referrer_client_id:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid
+                  default: null
+                  description: Optional own active client to whom the coupon was issued, not the discount recipient. Not an
+                    eligibility restriction.
+      responses:
+        '201':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '200':
+          description: Idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '409':
+          description: 'code_taken: number already reserved, including expired/revoked coupons; conflict: idempotency key with
+            another payload'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/coupons/search:
+    post:
+      operationId: searchCoupons
+      summary: List own coupons or find an exact normalized paper number
+      description: Searches do not consume coupon usages. Newest first, 50 records per page. Detail reads share the same per-specialist
+        lookup budget.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                code:
+                  type: string
+                  maxLength: 20
+                  default: ''
+                  description: 'Optional manual paper number: 1–6 ASCII digits, spaces/hyphens removed, left-padded to six digits.
+                    Empty generates a cryptographically random six-digit code. Permanent uniqueness per specialist.'
+                state:
+                  type: string
+                  enum:
+                  - all
+                  - available
+                  - expired
+                  - revoked
+                  - exhausted
+                  default: all
+                offset:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  default: 0
+      responses:
+        '200':
+          description: Own coupons
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - has_more
+                properties:
+                  items:
+                    type: array
+                    maxItems: 50
+                    items:
+                      $ref: '#/components/schemas/Coupon'
+                  has_more:
+                    type: boolean
+        '429':
+          description: Shared per-specialist budget of 120 searches/detail reads per minute exhausted. No raw IP headers are
+            trusted.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/coupons/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getCoupon
+      summary: Read own coupon and immutable issuance/revocation events
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Current conditions/state and audit
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - coupon
+                - events
+                properties:
+                  coupon:
+                    $ref: '#/components/schemas/Coupon'
+                  events:
+                    type: array
+                    maxItems: 2
+                    items:
+                      $ref: '#/components/schemas/CouponEvent'
+        '429':
+          description: Shared per-specialist budget of 120 searches/detail reads per minute exhausted. No raw IP headers are
+            trusted.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /api/coupons/{id}/revoke:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: revokeCoupon
+      summary: Permanently revoke own coupon
+      description: Requires a nonempty reason. Concurrent/repeated calls preserve the first reason and time, returning the same
+        revoked coupon with one revocation event. No undo, deletion or term-edit endpoint exists. Number reservation is retained
+        forever.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: Revoked or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '404':
+          description: Coupon absent or owned by another specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
 components:
   securitySchemes:
     sessionCookie:
@@ -499,6 +833,131 @@ components:
         occurred_at:
           type: string
           format: date-time
+    Coupon:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - discount_type
+      - value
+      - restrictions
+      - total_limit
+      - per_client_limit
+      - first_visit_only
+      - expires_on
+      - referrer_client_id
+      - id
+      - used_count
+      - status
+      - expires_at
+      - referrer_name
+      - revoked_at
+      - revoke_reason
+      - created_at
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{6}$
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+          description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma or period
+            input; dot with two digits in responses.'
+        restrictions:
+          type: string
+          maxLength: 2000
+          description: Optional plain text; line breaks are preserved and never silently truncated.
+        total_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+        per_client_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          description: Omitted defaults to 1. Explicit null means unlimited, independently of total_limit.
+        first_visit_only:
+          type: boolean
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          description: Last valid date inclusive at fixed Moscow UTC+03:00. Expiry is next day 00:00 UTC+03:00, exclusive. Past
+            dates are permitted and immediately show expired.
+        referrer_client_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Optional own active client to whom the coupon was issued, not the discount recipient. Not an eligibility
+            restriction.
+        id:
+          type: string
+          format: uuid
+          description: Cryptographically random UUIDv4.
+        used_count:
+          type: integer
+          minimum: 0
+          description: Zero until redemption is implemented; lookup does not increment this value.
+        status:
+          type: string
+          enum:
+          - available
+          - expired
+          - exhausted
+          - revoked
+          description: 'Precedence: revoked, expired, exhausted, available. This is global state, not client-specific eligibility.'
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        referrer_name:
+          type:
+          - string
+          - 'null'
+        revoked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        revoke_reason:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+    CouponEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - reason
+      - occurred_at
+      properties:
+        action:
+          type: string
+          enum:
+          - created
+          - revoked
+        reason:
+          type:
+          - string
+          - 'null'
+        occurred_at:
+          type: string
+          format: date-time
     Status:
       type: object
       additionalProperties: false
@@ -506,7 +965,7 @@ components:
       properties:
         status:
           type: string
-          enum: [not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
+          enum: [code_taken, too_many_requests, not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
   responses:
     BadRequest:
       description: Malformed, extra, or invalid input fields
