@@ -14,6 +14,13 @@ It is additive and compatible with rolling the application back to the earlier
 infrastructure-only scaffold. Preserve these tables on application rollback.
 Back up before deployment and test restoration before incompatible schema changes.
 
+`002_specialist_login.sql` renames `specialists.email` to `login`, including its
+constraints. Existing identifiers, account IDs, password hashes, sessions and
+login budgets are preserved. An existing email-shaped identifier remains the
+account's login. Apply it with the updated API/frontend; the earlier email-based
+authentication binary is not compatible with the renamed column. Rolling back
+to that binary requires a matching database restore, not just an image rollback.
+
 Local commands: `make migrate` using a built API image and running DB, or
 `make migrate-host` using Go and a trusted `.env`. `make up` performs the former
 after the database starts; production deployment performs the same separate step.

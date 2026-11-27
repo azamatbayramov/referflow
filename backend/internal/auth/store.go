@@ -19,7 +19,7 @@ var ErrNotFound = errors.New("not found")
 
 type User struct {
 	ID    string `json:"id"`
-	Email string `json:"email"`
+	Login string `json:"login"`
 	Name  string `json:"name"`
 }
 
@@ -31,8 +31,8 @@ type Session struct {
 
 type Store struct{ Pool *pgxpool.Pool }
 
-func (s Store) CreateAccount(ctx context.Context, email, name, password string) error {
-	email, err := NormalizeEmail(email)
+func (s Store) CreateAccount(ctx context.Context, login, name, password string) error {
+	login, err := NormalizeLogin(login)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func (s Store) CreateAccount(ctx context.Context, email, name, password string) 
 	id[6] = (id[6] & 0x0f) | 0x40
 	id[8] = (id[8] & 0x3f) | 0x80
 	uuid := fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:])
-	_, err = s.Pool.Exec(ctx, `INSERT INTO specialists(id,email,name,password_hash) VALUES($1,$2,$3,$4)`, uuid, email, name, hash)
+	_, err = s.Pool.Exec(ctx, `INSERT INTO specialists(id,login,name,password_hash) VALUES($1,$2,$3,$4)`, uuid, login, name, hash)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return errors.New("account already exists")
@@ -62,10 +62,10 @@ func (s Store) CreateAccount(ctx context.Context, email, name, password string) 
 	return nil
 }
 
-func (s Store) Account(ctx context.Context, email string) (User, string, error) {
+func (s Store) Account(ctx context.Context, login string) (User, string, error) {
 	var user User
 	var hash string
-	err := s.Pool.QueryRow(ctx, `SELECT id::text,email,name,password_hash FROM specialists WHERE email=$1`, email).Scan(&user.ID, &user.Email, &user.Name, &hash)
+	err := s.Pool.QueryRow(ctx, `SELECT id::text,login,name,password_hash FROM specialists WHERE login=$1`, login).Scan(&user.ID, &user.Login, &user.Name, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, "", ErrNotFound
 	}
@@ -74,7 +74,7 @@ func (s Store) Account(ctx context.Context, email string) (User, string, error) 
 
 // AllowLogin limits all attempts (including successful ones), without revealing
 // account existence. PostgreSQL makes these budgets effective across replicas.
-func (s Store) AllowLogin(ctx context.Context, email string) (bool, error) {
+func (s Store) AllowLogin(ctx context.Context, login string) (bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -88,7 +88,7 @@ func (s Store) AllowLogin(ctx context.Context, email string) (bool, error) {
 		limit, seconds int
 	}{
 		{"global", 120, 60},
-		{fmt.Sprintf("account:%x", sha256.Sum256([]byte(email))), 10, 900},
+		{fmt.Sprintf("account:%x", sha256.Sum256([]byte(login))), 10, 900},
 	}
 	allowed := true
 	for _, budget := range budgets {
@@ -132,9 +132,9 @@ func (s Store) CreateSession(ctx context.Context, userID string, tokenHash, oldH
 
 func (s Store) Session(ctx context.Context, hash []byte) (Session, error) {
 	var session Session
-	err := s.Pool.QueryRow(ctx, `SELECT u.id::text,u.email,u.name,s.expires_at FROM sessions s
+	err := s.Pool.QueryRow(ctx, `SELECT u.id::text,u.login,u.name,s.expires_at FROM sessions s
         JOIN specialists u ON u.id=s.specialist_id WHERE s.token_hash=$1 AND s.expires_at>now()`, hash).
-		Scan(&session.User.ID, &session.User.Email, &session.User.Name, &session.ExpiresAt)
+		Scan(&session.User.ID, &session.User.Login, &session.User.Name, &session.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}

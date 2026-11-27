@@ -7,27 +7,34 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
-	"net/mail"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
 const passwordIterations = 600000
 const passwordPrefix = "pbkdf2-sha256$600000$"
 
-func NormalizeEmail(raw string) (string, error) {
-	email := strings.ToLower(strings.TrimSpace(raw))
-	address, err := mail.ParseAddress(email)
-	if err != nil || address.Address != email || address.Name != "" || len(email) > 254 {
-		return "", errors.New("invalid email")
+func NormalizeLogin(raw string) (string, error) {
+	if !utf8.ValidString(raw) {
+		return "", errors.New("invalid login")
 	}
-	return email, nil
+	login := strings.ToLower(strings.TrimSpace(raw))
+	if login == "" || utf8.RuneCountInString(login) > 254 {
+		return "", errors.New("login must contain 1 to 254 characters")
+	}
+	for _, char := range login {
+		if unicode.IsSpace(char) || unicode.IsControl(char) || unicode.Is(unicode.Cf, char) {
+			return "", errors.New("login cannot contain spaces or control characters")
+		}
+	}
+	return login, nil
 }
 
 func HashPassword(password string) (string, error) {
 	n := utf8.RuneCountInString(password)
-	if !utf8.ValidString(password) || n < 15 || n > 128 {
-		return "", errors.New("password must contain 15 to 128 characters")
+	if !utf8.ValidString(password) || n < 8 || n > 128 {
+		return "", errors.New("password must contain 8 to 128 characters")
 	}
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {

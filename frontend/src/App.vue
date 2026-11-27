@@ -2,13 +2,13 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 type Session = {
-  user: { id: string; email: string; name: string }
+  user: { id: string; login: string; name: string }
   expires_at: string
   csrf_token: string
 }
 const state = ref<'loading' | 'unavailable' | 'guest' | 'member'>('loading')
 const session = ref<Session | null>(null)
-const email = ref('')
+const loginName = ref('')
 const password = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -66,7 +66,10 @@ async function login() {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.value, password: password.value }),
+      body: JSON.stringify({
+        login: loginName.value,
+        password: password.value,
+      }),
       signal: AbortSignal.timeout(10000),
     })
     if (response.ok) {
@@ -75,11 +78,11 @@ async function login() {
     } else {
       error.value =
         response.status === 401
-          ? 'Неверный email или пароль.'
+          ? 'Неверный логин или пароль.'
           : response.status === 429
             ? 'Слишком много попыток входа. Повторите через 15 минут.'
             : response.status === 400
-              ? 'Проверьте email и пароль.'
+              ? 'Проверьте логин и пароль.'
               : 'Не удалось войти. Попробуйте еще раз.'
     }
   } catch {
@@ -167,15 +170,17 @@ onBeforeUnmount(() => {
         <h2 id="login-title">Вход в кабинет</h2>
         <p class="muted">Используйте свою учетную запись специалиста.</p>
         <form :aria-busy="busy" @submit.prevent="login">
-          <label for="email">Email</label>
+          <label for="login">Логин</label>
           <input
-            id="email"
-            v-model="email"
-            name="email"
-            type="email"
+            id="login"
+            v-model="loginName"
+            name="login"
+            type="text"
             autocomplete="username"
+            autocapitalize="none"
+            :spellcheck="false"
             required
-            maxlength="254"
+            maxlength="508"
             :disabled="busy"
             :aria-describedby="error ? 'login-error' : undefined"
           />
@@ -236,7 +241,7 @@ onBeforeUnmount(() => {
         <div class="profile-details">
           <h2 id="profile-title">Ваш профиль</h2>
           <p>{{ session.user.name }}</p>
-          <p class="muted">{{ session.user.email }}</p>
+          <p class="muted">{{ session.user.login }}</p>
         </div>
         <span class="session-badge"
           ><span class="dot"></span> Сеанс активен</span

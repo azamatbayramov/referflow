@@ -87,7 +87,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	var input struct {
-		Email    string `json:"email"`
+		Login    string `json:"login"`
 		Password string `json:"password"`
 	}
 	if err := decoder.Decode(&input); err != nil {
@@ -103,12 +103,12 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		status(w, 400, "invalid_request")
 		return
 	}
-	email, err := NormalizeEmail(input.Email)
+	login, err := NormalizeLogin(input.Login)
 	if err != nil || len(input.Password) == 0 || len(input.Password) > 512 {
 		status(w, 400, "invalid_request")
 		return
 	}
-	allowed, err := h.store.AllowLogin(r.Context(), email)
+	allowed, err := h.store.AllowLogin(r.Context(), login)
 	if err != nil {
 		status(w, 503, "unavailable")
 		return
@@ -125,7 +125,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		status(w, 503, "unavailable")
 		return
 	}
-	user, hash, err := h.store.Account(r.Context(), email)
+	user, hash, err := h.store.Account(r.Context(), login)
 	missing := errors.Is(err, ErrNotFound)
 	if err != nil && !missing {
 		status(w, 503, "unavailable")

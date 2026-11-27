@@ -24,11 +24,11 @@ type memoryStore struct {
 	offline  bool
 }
 
-func (s *memoryStore) Account(_ context.Context, email string) (User, string, error) {
+func (s *memoryStore) Account(_ context.Context, login string) (User, string, error) {
 	if s.offline {
 		return User{}, "", errors.New("private database details")
 	}
-	if email != s.user.Email {
+	if login != s.user.Login {
 		return User{}, "", ErrNotFound
 	}
 	return s.user, s.hash, nil
@@ -79,7 +79,7 @@ func fixture(t *testing.T) (*Handler, *memoryStore, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &memoryStore{user: User{ID: "f37d3f11-3531-4ec1-897c-bd6c328a1b43", Email: "specialist@example.test", Name: "Тестовый специалист"}, hash: hash, sessions: map[string]Session{}, allowed: true}
+	store := &memoryStore{user: User{ID: "f37d3f11-3531-4ec1-897c-bd6c328a1b43", Login: "specialist", Name: "Тестовый специалист"}, hash: hash, sessions: map[string]Session{}, allowed: true}
 	handler, err := NewHandler(store, Options{Origins: []string{"https://referflow.example"}, SecureCookie: true, SessionTTL: time.Hour})
 	if err != nil {
 		t.Fatal(err)
@@ -100,13 +100,13 @@ func call(h *Handler, method, path, body string, cookie *http.Cookie, csrfToken 
 	h.ServeHTTP(res, req)
 	return res
 }
-func credentials(email, password string) string {
-	data, _ := json.Marshal(map[string]string{"email": email, "password": password})
+func credentials(login, password string) string {
+	data, _ := json.Marshal(map[string]string{"login": login, "password": password})
 	return string(data)
 }
 func loginForTest(t *testing.T, h *Handler, s *memoryStore, password string) (*http.Cookie, Session) {
 	t.Helper()
-	response := call(h, "POST", "/api/auth/login", credentials(s.user.Email, password), nil, "")
+	response := call(h, "POST", "/api/auth/login", credentials("  "+strings.ToUpper(s.user.Login)+"  ", password), nil, "")
 	if response.Code != 200 {
 		t.Fatalf("login: %d %s", response.Code, response.Body.String())
 	}
@@ -125,7 +125,7 @@ func TestSessionLifecycleAndOwnership(t *testing.T) {
 	if cookie.Name != "__Host-referflow_session" || !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/" || cookie.Domain != "" || cookie.MaxAge != 3600 {
 		t.Fatalf("unsafe cookie flags: %+v", cookie)
 	}
-	if session.User.ID != s.user.ID || session.CSRFToken == "" || session.CSRFToken == cookie.Value {
+	if session.User.ID != s.user.ID || session.User.Login != s.user.Login || session.CSRFToken == "" || session.CSRFToken == cookie.Value {
 		t.Fatal("invalid session response")
 	}
 	if _, ok := s.sessions[string(digest(cookie.Value))]; !ok {
@@ -163,7 +163,7 @@ func TestSessionLifecycleAndOwnership(t *testing.T) {
 func TestRotationExpiryAndDatabaseFailure(t *testing.T) {
 	h, s, password := fixture(t)
 	old, _ := loginForTest(t, h, s, password)
-	res := call(h, "POST", "/api/auth/login", credentials(s.user.Email, password), old, "")
+	res := call(h, "POST", "/api/auth/login", credentials(s.user.Login, password), old, "")
 	if res.Code != 200 {
 		t.Fatal(res.Code)
 	}
@@ -188,14 +188,14 @@ func TestRotationExpiryAndDatabaseFailure(t *testing.T) {
 }
 func TestLoginErrorsAndCSRF(t *testing.T) {
 	h, s, password := fixture(t)
-	for _, email := range []string{s.user.Email, "missing@example.test"} {
-		res := call(h, "POST", "/api/auth/login", credentials(email, password+"wrong"), nil, "")
+	for _, login := range []string{s.user.Login, "missing-specialist"} {
+		res := call(h, "POST", "/api/auth/login", credentials(login, password+"wrong"), nil, "")
 		if res.Code != 401 || strings.TrimSpace(res.Body.String()) != `{"status":"invalid_credentials"}` || len(res.Result().Cookies()) != 0 {
 			t.Fatal("credentials error disclosed account or session")
 		}
 	}
 	for _, origin := range []string{"", "null", "https://evil.example", "https://referflow.example.evil"} {
-		req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(credentials(s.user.Email, password)))
+		req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(credentials(s.user.Login, password)))
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Content-Type", "application/json")
 		res := httptest.NewRecorder()
@@ -204,17 +204,17 @@ func TestLoginErrorsAndCSRF(t *testing.T) {
 			t.Fatalf("accepted origin %q", origin)
 		}
 	}
-	for _, body := range []string{`{`, credentials(s.user.Email, password) + `{}`, `{"email":"specialist@example.test","password":"invalid","specialist_id":"other"}`} {
+	for _, body := range []string{`{`, credentials(s.user.Login, password) + `{}`, `{"login":"specialist","password":"invalid","specialist_id":"other"}`, `{"email":"specialist@example.test","password":"invalid"}`} {
 		if res := call(h, "POST", "/api/auth/login", body, nil, ""); res.Code != 400 {
 			t.Fatal("accepted malformed/extra fields")
 		}
 	}
-	res := call(h, "POST", "/api/auth/login", `{"email":"`+strings.Repeat("a", 5000)+`"}`, nil, "")
+	res := call(h, "POST", "/api/auth/login", `{"login":"`+strings.Repeat("a", 5000)+`"}`, nil, "")
 	if res.Code != 413 {
 		t.Fatal("unbounded request body")
 	}
 	s.allowed = false
-	res = call(h, "POST", "/api/auth/login", credentials(s.user.Email, password), nil, "")
+	res = call(h, "POST", "/api/auth/login", credentials(s.user.Login, password), nil, "")
 	if res.Code != 429 || res.Header().Get("Retry-After") == "" {
 		t.Fatal("login rate limit missing")
 	}

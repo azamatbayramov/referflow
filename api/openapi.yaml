@@ -71,17 +71,18 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [email, password]
+              required: [login, password]
               properties:
-                email:
+                login:
                   type: string
-                  format: email
+                  minLength: 1
                   maxLength: 254
+                  description: Case-insensitive login, trimmed at the edges. No internal whitespace, control or Unicode format characters. An email address is not required.
                 password:
                   type: string
                   format: password
                   writeOnly: true
-                  description: Account passwords contain 15–128 Unicode characters. Login input is bounded to 512 UTF-8 bytes.
+                  description: Account passwords contain 8–128 Unicode characters. Login input is bounded to 512 UTF-8 bytes.
       responses:
         '200':
           description: Session created; token is sent only in an HttpOnly cookie
@@ -187,14 +188,16 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, email, name]
+      required: [id, login, name]
       properties:
         id:
           type: string
           format: uuid
-        email:
+        login:
           type: string
-          format: email
+          minLength: 1
+          maxLength: 254
+          description: Normalized lowercase account login.
         name:
           type: string
     Session:
@@ -228,7 +231,7 @@ components:
           schema:
             $ref: '#/components/schemas/Status'
     InvalidCredentials:
-      description: Invalid email or password; identical for missing and existing accounts
+      description: Invalid login or password; identical for missing and existing accounts
       content:
         application/json:
           schema:

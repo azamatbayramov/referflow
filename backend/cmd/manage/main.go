@@ -25,11 +25,11 @@ func main() {
 
 func run(args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: manage migrate | create-user --email EMAIL --name NAME --password-stdin")
+		return errors.New("usage: manage migrate | create-user --login LOGIN --name NAME --password-stdin")
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	email := flags.String("email", "", "account email")
+	login := flags.String("login", "", "account login")
 	name := flags.String("name", "", "display name")
 	stdin := flags.Bool("password-stdin", false, "read password from stdin")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
@@ -38,8 +38,8 @@ func run(args []string, input io.Reader) error {
 	if args[0] != "migrate" && args[0] != "create-user" {
 		return errors.New("unknown management command")
 	}
-	if args[0] == "create-user" && (!*stdin || *email == "" || *name == "") {
-		return errors.New("email, name and --password-stdin are required")
+	if args[0] == "create-user" && (!*stdin || *login == "" || *name == "") {
+		return errors.New("login, name and --password-stdin are required")
 	}
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
@@ -64,7 +64,7 @@ func run(args []string, input io.Reader) error {
 		return errors.New("cannot read password; maximum 128 characters")
 	}
 	secret := strings.TrimSuffix(strings.TrimSuffix(string(password), "\n"), "\r")
-	if err := (auth.Store{Pool: pool}).CreateAccount(ctx, *email, *name, secret); err != nil {
+	if err := (auth.Store{Pool: pool}).CreateAccount(ctx, *login, *name, secret); err != nil {
 		return err
 	}
 	fmt.Println("Account created.")

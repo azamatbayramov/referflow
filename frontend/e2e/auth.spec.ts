@@ -56,13 +56,13 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
   request,
   baseURL,
 }) => {
-  const email = `test-${randomBytes(8).toString('hex')}@example.test`
-  const password = randomBytes(24).toString('base64url')
+  const login = `test-${randomBytes(8).toString('hex')}`
+  const password = randomBytes(6).toString('base64url') // Exactly 8 characters.
   manage(
     [
       'create-user',
-      '--email',
-      email,
+      '--login',
+      login,
       '--name',
       'Тестовый специалист',
       '--password-stdin',
@@ -75,10 +75,10 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
   await expect(
     page.getByRole('heading', { name: 'Вход в кабинет' }),
   ).toBeVisible()
-  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByLabel('Логин', { exact: true }).fill(login.toUpperCase())
   await page.getByLabel('Пароль', { exact: true }).fill(`${password}wrong`)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
-  await expect(page.getByRole('alert')).toHaveText('Неверный email или пароль.')
+  await expect(page.getByRole('alert')).toHaveText('Неверный логин или пароль.')
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
   await expect(
@@ -100,7 +100,7 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
   const before = await context.request.get(
     '/api/auth/session?specialist_id=other',
   )
-  expect((await before.json()).user.email).toBe(email)
+  expect((await before.json()).user.login).toBe(login)
   const rejected = await context.request.post('/api/auth/logout', {
     headers: { Origin: new URL(baseURL!).origin },
   })
@@ -119,13 +119,13 @@ test('expired sessions stop API and browser access', async ({
   page,
   context,
 }) => {
-  const email = `expiry-${randomBytes(8).toString('hex')}@example.test`
+  const login = `expiry-${randomBytes(8).toString('hex')}`
   const password = randomBytes(24).toString('base64url')
   manage(
     [
       'create-user',
-      '--email',
-      email,
+      '--login',
+      login,
       '--name',
       'Проверка срока',
       '--password-stdin',
@@ -133,7 +133,7 @@ test('expired sessions stop API and browser access', async ({
     password,
   )
   await page.goto('/')
-  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByLabel('Логин', { exact: true }).fill(login.toUpperCase())
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
   await expect(
@@ -155,24 +155,24 @@ test('login errors, untrusted origins and attempt limits', async ({
   baseURL,
 }) => {
   const origin = new URL(baseURL!).origin
-  const email = `limits-${randomBytes(8).toString('hex')}@example.test`
+  const login = `limits-${randomBytes(8).toString('hex')}`
   const password = randomBytes(24).toString('base64url')
   const rejected = await request.post('/api/auth/login', {
     headers: { Origin: 'https://untrusted.example' },
-    data: { email, password },
+    data: { login, password },
   })
   expect(rejected.status()).toBe(403)
   for (let index = 0; index < 10; index++) {
     const response = await request.post('/api/auth/login', {
       headers: { Origin: origin },
-      data: { email, password },
+      data: { login: index % 2 ? login.toUpperCase() : login, password },
     })
     expect(response.status()).toBe(401)
     expect(await response.json()).toEqual({ status: 'invalid_credentials' })
   }
   const limited = await request.post('/api/auth/login', {
     headers: { Origin: origin },
-    data: { email, password },
+    data: { login, password },
   })
   expect(limited.status()).toBe(429)
   expect(limited.headers()['retry-after']).toBe('900')
