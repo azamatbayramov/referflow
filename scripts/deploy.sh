@@ -12,5 +12,8 @@ compose=(docker compose --env-file .env.production -f deploy/compose.yaml)
 "${compose[@]}" config --quiet
 # Pull every image before touching running containers.
 "${compose[@]}" pull
+"${compose[@]}" up -d --wait --wait-timeout 120 db
+# Migrate once, before starting any replicas of the new API.
+"${compose[@]}" run --rm --no-deps --entrypoint manage api migrate
 "${compose[@]}" up -d --wait --wait-timeout 120 --remove-orphans
 "${compose[@]}" ps

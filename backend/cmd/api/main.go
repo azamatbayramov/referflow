@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/azamatbayramov/referflow/backend/internal/auth"
 	"github.com/azamatbayramov/referflow/backend/internal/config"
 	"github.com/azamatbayramov/referflow/backend/internal/httpserver"
 	"github.com/azamatbayramov/referflow/backend/internal/postgres"
+	"github.com/azamatbayramov/referflow/backend/migrations"
 )
 
 func main() {
@@ -37,9 +39,13 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+	authHandler, err := auth.NewHandler(auth.Store{Pool: pool}, auth.Options{Origins: cfg.AppOrigins, SecureCookie: cfg.SecureCookie, SessionTTL: cfg.SessionTTL})
+	if err != nil {
+		return err
+	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpserver.NewHandler(pool),
+		Handler:           httpserver.NewHandler(migrations.Checker{Pool: pool}, authHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,

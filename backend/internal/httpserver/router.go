@@ -11,9 +11,12 @@ type Pinger interface {
 	Ping(context.Context) error
 }
 
-// NewHandler deliberately exposes only infrastructure endpoints.
-func NewHandler(db Pinger) http.Handler {
+// The auth handler owns the session endpoints; health remains public.
+func NewHandler(db Pinger, auth http.Handler) http.Handler {
 	mux := http.NewServeMux()
+	if auth != nil {
+		mux.Handle("/api/auth/", auth)
+	}
 	mux.HandleFunc("/api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if !allowRead(w, r) {
 			return
