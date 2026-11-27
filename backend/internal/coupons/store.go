@@ -214,10 +214,10 @@ func (s Store) Revoke(ctx context.Context, owner, id, reason string) (Coupon, er
 		return Coupon{}, err
 	}
 	if revoked == nil {
-		if _, err := tx.Exec(ctx, `UPDATE coupons SET revoked_at=now(),revoke_reason=$3 WHERE specialist_id=$1 AND id=$2`, owner, id, reason); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE coupons SET revoked_at=clock_timestamp(),revoke_reason=$3 WHERE specialist_id=$1 AND id=$2`, owner, id, reason); err != nil {
 			return Coupon{}, err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO coupon_events(coupon_id,specialist_id,action,reason) VALUES($1,$2,'revoked',$3)`, id, owner, reason); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO coupon_events(coupon_id,specialist_id,action,reason,occurred_at) SELECT id,specialist_id,'revoked',revoke_reason,revoked_at FROM coupons WHERE id=$1 AND specialist_id=$2`, id, owner); err != nil {
 			return Coupon{}, err
 		}
 	}

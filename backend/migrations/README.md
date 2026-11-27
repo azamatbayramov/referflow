@@ -37,3 +37,8 @@ these tables. See [client cards](../../docs/clients.md).
 lookup budgets. It also adds an owner/ID unique client index for the composite
 referrer FK. Existing migrations remain unchanged. Rolling back to client cards
 preserves the added tables. See [coupons](../../docs/coupons.md).
+
+`005_redemptions.sql` adds coupon uses and cancellation audit, with owner-scoped
+composite FKs and permanent idempotency keys. Existing migrations stay unchanged.
+Keep the table on rollback; the earlier issuance UI does not show this history.
+See [redemptions](../../docs/redemptions.md).

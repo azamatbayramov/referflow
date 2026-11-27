@@ -653,3 +653,80 @@ textarea {
 .coupon-revoke .check-label {
   margin: 0 0 20px;
 }
+.coupon-use,
+.redemption-history {
+  border-top: 1px solid #d8dfcf;
+  padding-top: 24px;
+  margin-top: 28px;
+}
+.coupon-use > h4,
+.redemption-history > h4 {
+  font-size: 17px;
+  font-weight: 550;
+  margin: 0 0 14px;
+}
+.coupon-use > .field-help,
+.redemption-history > .field-help {
+  margin: 0 0 20px;
+}
+.coupon-use .check-label {
+  margin-bottom: 18px;
+}
+.use-value {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.use-restrictions {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 0 24px;
+}
+.redemption-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.redemption-rows > li {
+  border: 1px solid #d8dfcf;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.redemption-rows p {
+  margin: 8px 0;
+}
+.redemption-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.redemption-heading > span {
+  font-size: 12px;
+  color: #627061;
+}
+.confirmation-audit {
+  margin: 14px 0;
+}
+.confirmation-audit summary {
+  cursor: pointer;
+}
+.cancel-audit {
+  background: #f5efe4;
+  border-radius: 6px;
+  padding: 10px;
+}
+.cancel-form {
+  margin-top: 18px;
+}
+.cancel-form .field-help {
+  margin: 0 0 16px;
+}
+.cancel-form .search-row {
+  flex-wrap: wrap;
+}
