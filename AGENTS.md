@@ -2,15 +2,15 @@
 
 ## Scope and entry points
 
-Referflow is a Go + Vue monorepo. This baseline contains infrastructure only: no coupon, referral, authentication, billing, or patient-data behavior is implemented. Add business behavior only when a task explicitly requests it.
+Referflow is a Go + Vue monorepo. Specialist authentication, server-side sessions, and explicit SQL migrations are implemented. Coupon, referral, billing, and client/patient-data behavior is not yet implemented. Add business behavior only when a task explicitly requests it.
 
-Read `README.md`, the relevant `docs/` page, and the nearest nested `AGENTS.md` before editing. The user request defines the task scope; do not copy personal profiles into repository instructions.
+Read `README.md`, `docs/authentication.md` for authentication changes, the relevant `docs/` page, and the nearest nested `AGENTS.md` before editing. The user request defines the task scope; do not copy personal profiles into repository instructions.
 
 For coupon/client work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These describe planned behavior, not shipped features. V1 records clients and coupon redemptions; visit records (including hidden ones), Google Sheets, and other CRM integrations are out of scope. First-visit eligibility and one-coupon-per-visit rely on specialist confirmation; do not claim automatic enforcement without visit data or substitute a client-per-day limit. Preserve the minimal data scope and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
 
 | Area | Ownership |
 | --- | --- |
-| `backend/` | Go API, configuration, database access, future SQL migrations |
+| `backend/` | Go API, configuration, database access, SQL migrations |
 | `frontend/` | Vue app, browser checks, static web image and Caddy routing |
 | `api/openapi.yaml` | HTTP contract shared by both applications |
 | `deploy/`, `scripts/`, `compose.yaml` | Runtime configuration and operational commands |

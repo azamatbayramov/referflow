@@ -45,3 +45,27 @@ func TestLoadRejectsInvalidEnvironment(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionSettings(t *testing.T) {
+	for _, tc := range []struct {
+		origins, secure, ttl string
+		valid                bool
+	}{
+		{"https://referflow.example", "true", "12h", true},
+		{"http://127.0.0.1:8180,http://localhost:5173", "false", "1m", true},
+		{"https://referflow.example", "false", "12h", false},
+		{"http://referflow.example", "true", "12h", false},
+		{"https://referflow.example/", "true", "12h", false},
+		{"https://user:secret@referflow.example", "true", "12h", false},
+		{"https://referflow.example?", "true", "12h", false},
+		{"https://referflow.example", "invalid", "12h", false},
+		{"https://referflow.example", "true", "0s", false},
+		{"https://referflow.example", "true", "900h", false},
+	} {
+		env := map[string]string{"PGPASSWORD": "test-config-value", "APP_ORIGINS": tc.origins, "SESSION_COOKIE_SECURE": tc.secure, "SESSION_TTL": tc.ttl}
+		_, err := Load(func(key string) string { return env[key] })
+		if (err == nil) != tc.valid {
+			t.Errorf("origins %q, secure %q, ttl %q: %v", tc.origins, tc.secure, tc.ttl, err)
+		}
+	}
+}

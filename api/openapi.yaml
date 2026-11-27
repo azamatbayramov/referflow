@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Referflow infrastructure API
-  version: 0.1.0
-  description: Infrastructure endpoints only. No business API is implemented.
+  title: Referflow API
+  version: 0.2.0
+  description: Specialist sessions and infrastructure. Coupon/client behavior is not implemented.
 servers:
   - url: /
 paths:
@@ -27,11 +27,11 @@ paths:
   /api/readyz:
     get:
       operationId: getReadiness
-      summary: Check PostgreSQL connectivity
-      description: Pings PostgreSQL with a two-second deadline. HEAD is also supported.
+      summary: Check PostgreSQL and applied schema
+      description: Verifies migration checksums with a two-second deadline. HEAD is also supported.
       responses:
         '200':
-          description: PostgreSQL is reachable
+          description: PostgreSQL and the required schema are ready
           content:
             application/json:
               schema:
@@ -54,3 +54,218 @@ paths:
                   status:
                     type: string
                     const: unavailable
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Start a specialist session
+      description: |
+        Requires an exact configured Origin and JSON body. Login rotates a supplied
+        session cookie. All attempts share an account budget of 10 per 15 minutes
+        and an application budget of 120 per minute. No account registration API exists.
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                password:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: Account passwords contain 15–128 Unicode characters. Login input is bounded to 512 UTF-8 bytes.
+      responses:
+        '200':
+          description: Session created; token is sent only in an HttpOnly cookie
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Secure __Host-referflow_session cookie in production; referflow_session for explicit loopback HTTP development. Path=/, HttpOnly, SameSite=Strict, no Domain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          description: Login budget exhausted; Retry-After is a conservative maximum wait
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 900
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/auth/session:
+    get:
+      operationId: getSession
+      summary: Get the authenticated specialist and a CSRF token
+      description: |
+        Resolves the owner solely from the session cookie and database, never from
+        a caller-supplied specialist ID. Checks absolute expiry on every request.
+        Responses are no-store. There are no CORS grants.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Authenticated specialist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke this session and clear its cookie
+      description: The old cookie cannot authenticate after logout. A failed database request does not clear the cookie or claim successful logout.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: csrf_token returned by login or getSession
+      responses:
+        '204':
+          description: Session revoked and cookie cleared
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-referflow_session
+      description: The loopback-only HTTP development cookie is named referflow_session.
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Exact allowlisted browser origin, including scheme and port. Missing or null origins are rejected for writes.
+  schemas:
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+    Session:
+      type: object
+      additionalProperties: false
+      required: [user, expires_at, csrf_token]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        expires_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+          minLength: 43
+          maxLength: 43
+          description: Keep in memory; send as X-CSRF-Token on authenticated writes. This is not the session token.
+    Status:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
+  responses:
+    BadRequest:
+      description: Malformed, extra, or invalid input fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    InvalidCredentials:
+      description: Invalid email or password; identical for missing and existing accounts
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    Unauthenticated:
+      description: Missing, ambiguous, invalid, expired, or revoked session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    CSRF:
+      description: Missing/untrusted Origin or missing/invalid CSRF header
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    MethodNotAllowed:
+      description: Unsupported HTTP method; Allow header lists the supported method
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    TooLarge:
+      description: Login body exceeds 4096 bytes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    UnsupportedMediaType:
+      description: Login requires application/json
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+    Unavailable:
+      description: Storage temporarily unavailable or password-verification capacity exhausted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'

@@ -23,6 +23,9 @@ services:
     environment:
       HTTP_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_ORIGINS: ${APP_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_TTL: ${SESSION_TTL:-12h}
       PGHOST: db
       PGPORT: "5432"
       PGDATABASE: ${PGDATABASE:-referflow}

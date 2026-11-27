@@ -31,6 +31,9 @@ services:
     environment:
       HTTP_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_ORIGINS: https://${SITE_ADDRESS:?Set SITE_ADDRESS in .env.production}
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_TTL: ${SESSION_TTL:-12h}
       PGHOST: db
       PGPORT: "5432"
       PGDATABASE: ${PGDATABASE:-referflow}
