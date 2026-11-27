@@ -11,6 +11,14 @@ type Client = {
   updated_at: string
 }
 type Event = { version: number; action: string; occurred_at: string }
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
 const props = defineProps<{ csrfToken: string }>()
 const emit = defineEmits<{ expired: [] }>()
 const items = ref<Client[]>([])
@@ -65,7 +73,7 @@ async function api(
     throw new Error('Сеанс завершен. Войдите снова.')
   }
   if (!response.ok)
-    throw new Error(
+    throw new ApiError(
       response.status === 409
         ? 'Карточка уже изменена. Откройте ее заново и повторите правку.'
         : response.status === 400
@@ -73,6 +81,7 @@ async function api(
           : response.status === 404
             ? 'Карточка недоступна. Обновите список.'
             : 'Не удалось выполнить действие. Попробуйте снова.',
+      response.status,
     )
   return response.json()
 }
@@ -208,6 +217,10 @@ async function save() {
   if (busy.value) return
   error.value = ''
   notice.value = ''
+  if (!name.value.trim()) {
+    error.value = 'Укажите имя клиента.'
+    return
+  }
   busy.value = true
   try {
     if (!frozenCreate) {
@@ -243,6 +256,10 @@ async function save() {
     await open(client)
     notice.value = 'Карточка сохранена.'
   } catch (e) {
+    if (e instanceof ApiError && e.status === 400 && !selected.value) {
+      frozenCreate = undefined
+      creationKey = crypto.randomUUID()
+    }
     if (alive)
       error.value =
         e instanceof Error ? e.message : 'Не удалось сохранить карточку.'

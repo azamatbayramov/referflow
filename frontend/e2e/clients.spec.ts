@@ -114,6 +114,15 @@ test('retry after lost create response keeps one card without a phone', async ({
   baseURL,
 }) => {
   await login(page)
+  await page.getByRole('button', { name: 'Добавить клиента' }).click()
+  await page.getByLabel('Имя / ФИО').fill('Без Телефона')
+  await page.getByLabel('Телефон (необязательно)').fill('123')
+  await page
+    .getByRole('button', { name: 'Сохранить карточку', exact: true })
+    .click()
+  await expect(page.getByRole('alert')).toContainText('Проверьте имя и телефон')
+  await expect(page.getByLabel('Имя / ФИО')).toBeEnabled()
+  await page.getByLabel('Телефон (необязательно)').fill('')
   let first = true
   await page.route('**/api/clients', async (route) => {
     if (first) {
@@ -122,8 +131,6 @@ test('retry after lost create response keeps one card without a phone', async ({
       await route.abort('failed')
     } else await route.continue()
   })
-  await page.getByRole('button', { name: 'Добавить клиента' }).click()
-  await page.getByLabel('Имя / ФИО').fill('Без Телефона')
   await page
     .getByRole('button', { name: 'Сохранить карточку', exact: true })
     .click()
