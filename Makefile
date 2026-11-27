@@ -77,7 +77,7 @@ test:
 	cd backend && $(GO) test -race -count=1 ./...
 
 test-integration:
-	cd backend && $(GO) test -race -count=1 -tags=integration ./internal/auth ./internal/clients
+	cd backend && $(GO) test -race -count=1 -tags=integration ./internal/auth ./internal/clients ./internal/coupons
 
 build:
 	cd backend && $(GO) build -trimpath -o bin/api ./cmd/api

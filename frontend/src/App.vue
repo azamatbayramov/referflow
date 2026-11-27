@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ClientsPanel from './components/ClientsPanel.vue'
+import CouponsPanel from './components/CouponsPanel.vue'
 
 type Session = {
   user: { id: string; login: string; name: string }
   expires_at: string
   csrf_token: string
 }
+const section = ref<'clients' | 'coupons'>('clients')
 const state = ref<'loading' | 'unavailable' | 'guest' | 'member'>('loading')
 const session = ref<Session | null>(null)
 const loginName = ref('')
@@ -235,7 +237,30 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <nav class="cabinet-nav" aria-label="Разделы кабинета">
+        <button
+          type="button"
+          :aria-pressed="section === 'clients'"
+          @click="section = 'clients'"
+        >
+          Клиенты
+        </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'coupons'"
+          @click="section = 'coupons'"
+        >
+          Купоны
+        </button>
+      </nav>
+      <CouponsPanel
+        v-if="section === 'coupons'"
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+      />
       <ClientsPanel
+        v-else
         :key="session.user.id"
         :csrf-token="session.csrf_token"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"

@@ -14,6 +14,7 @@ import (
 	"github.com/azamatbayramov/referflow/backend/internal/auth"
 	"github.com/azamatbayramov/referflow/backend/internal/clients"
 	"github.com/azamatbayramov/referflow/backend/internal/config"
+	"github.com/azamatbayramov/referflow/backend/internal/coupons"
 	"github.com/azamatbayramov/referflow/backend/internal/httpserver"
 	"github.com/azamatbayramov/referflow/backend/internal/postgres"
 	"github.com/azamatbayramov/referflow/backend/migrations"
@@ -46,7 +47,7 @@ func run() error {
 	}
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpserver.NewHandler(migrations.Checker{Pool: pool}, authHandler, authHandler.Protect(clients.Handler{Store: clients.Store{Pool: pool}})),
+		Handler:           httpserver.NewHandler(migrations.Checker{Pool: pool}, authHandler, authHandler.Protect(clients.Handler{Store: clients.Store{Pool: pool}}), authHandler.Protect(coupons.Handler{Store: coupons.Store{Pool: pool}})),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,

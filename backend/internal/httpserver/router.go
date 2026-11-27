@@ -12,7 +12,7 @@ type Pinger interface {
 }
 
 // The auth handler owns the session endpoints; health remains public.
-func NewHandler(db Pinger, auth http.Handler, clients http.Handler) http.Handler {
+func NewHandler(db Pinger, auth http.Handler, clients http.Handler, coupons http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	if auth != nil {
 		mux.Handle("/api/auth/", auth)
@@ -20,6 +20,10 @@ func NewHandler(db Pinger, auth http.Handler, clients http.Handler) http.Handler
 	if clients != nil {
 		mux.Handle("/api/clients", clients)
 		mux.Handle("/api/clients/", clients)
+	}
+	if coupons != nil {
+		mux.Handle("/api/coupons", coupons)
+		mux.Handle("/api/coupons/", coupons)
 	}
 	mux.HandleFunc("/api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if !allowRead(w, r) {

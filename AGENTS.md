@@ -2,11 +2,11 @@
 
 ## Scope and entry points
 
-Referflow is a Go + Vue monorepo. Specialist authentication, server-side sessions, explicit SQL migrations, and client cards are implemented. Coupon, referral, and billing behavior is not yet implemented. Add business behavior only when a task explicitly requests it.
+Referflow is a Go + Vue monorepo. Specialist authentication, server-side sessions, explicit SQL migrations, and client cards are implemented. Coupon issuance, search and revocation are implemented; redemption and public QR pages are planned. Add business behavior only when a task explicitly requests it.
 
 Read `README.md`, `docs/authentication.md` for authentication changes, the relevant `docs/` page, and the nearest nested `AGENTS.md` before editing. The user request defines the task scope; do not copy personal profiles into repository instructions.
 
-For client changes, also read `docs/clients.md`. For coupon/client work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These distinguish implemented client cards from planned coupon behavior. V1 records clients and coupon redemptions; visit records (including hidden ones), Google Sheets, and other CRM integrations are out of scope. First-visit eligibility and one-coupon-per-visit rely on specialist confirmation; do not claim automatic enforcement without visit data or substitute a client-per-day limit. Preserve the minimal data scope and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
+For client changes, also read `docs/clients.md`; for coupon changes, read `docs/coupons.md`. For coupon/client work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These distinguish implemented cards/coupon issuance from planned redemptions. V1 records clients and coupon redemptions; visit records (including hidden ones), Google Sheets, and other CRM integrations are out of scope. First-visit eligibility and one-coupon-per-visit rely on specialist confirmation; do not claim automatic enforcement without visit data or substitute a client-per-day limit. Preserve the minimal data scope and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
 
 | Area | Ownership |
 | --- | --- |
