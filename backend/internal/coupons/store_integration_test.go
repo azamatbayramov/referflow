@@ -10,9 +10,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"github.com/azamatbayramov/referflow/backend/internal/auth"
 	"github.com/azamatbayramov/referflow/backend/internal/clients"
 	"github.com/azamatbayramov/referflow/backend/migrations"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
 	"net/http/httptest"
@@ -95,7 +97,6 @@ func TestPostgresCouponIssuanceRevocationAndIsolation(t *testing.T) {
 	store := Store{Pool: pool}
 	key, _ := newUUID()
 	in := baseInput()
-	in.Code = "12-34"
 	refKey, _ := newUUID()
 	ref, _, err := (clients.Store{Pool: pool}).Create(ctx, a, refKey, clients.Input{Name: "Рекомендатель Тестовый"})
 	if err != nil {
@@ -162,7 +163,7 @@ func TestPostgresCouponIssuanceRevocationAndIsolation(t *testing.T) {
 		}
 		c = got
 	}
-	if created != 1 || c.Code != "001234" || c.ID[14] != '4' || c.ReferrerName == nil || *c.ReferrerName != "Рекомендатель Тестовый" {
+	if created != 1 || len(c.Code) != 6 || c.ID[14] != '4' || c.ReferrerName == nil || *c.ReferrerName != "Рекомендатель Тестовый" {
 		t.Fatal("incorrect issued coupon", created, c)
 	}
 	if w := call("GET", "/api/coupons/"+c.ID, nil, otherToken, otherCSRF, ""); w.Code != 404 {
@@ -176,8 +177,24 @@ func TestPostgresCouponIssuanceRevocationAndIsolation(t *testing.T) {
 		t.Fatal("foreign referrer accepted", err)
 	}
 	takenKey, _ := newUUID()
-	if _, _, err := store.Create(ctx, a, takenKey, in); err != ErrCodeTaken {
-		t.Fatal("code reused", err)
+	another, _, err := store.Create(ctx, a, takenKey, in)
+	if err != nil || another.Code == c.Code {
+		t.Fatal("number reused", err)
+	}
+	assertReserved := func() {
+		_, err := pool.Exec(ctx, `UPDATE coupons SET code=$1 WHERE id=$2`, c.Code, another.ID)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+			t.Fatal("reserved number reused", err)
+		}
+	}
+	assertReserved()
+	for _, override := range []string{c.Code, ""} {
+		manualKey, _ := newUUID()
+		w := call("POST", "/api/coupons", map[string]any{"code": override, "discount_type": "fixed", "value": "10"}, token, csrf, manualKey)
+		if w.Code != 400 {
+			t.Fatal("caller selected coupon number", w.Code)
+		}
 	}
 	altered := in
 	altered.Value = "13"
@@ -185,7 +202,7 @@ func TestPostgresCouponIssuanceRevocationAndIsolation(t *testing.T) {
 		t.Fatal("key payload conflict ignored", err)
 	}
 	for range 2 {
-		p, err := store.Search(ctx, a, Search{Code: "0012-34"})
+		p, err := store.Search(ctx, a, Search{Code: c.Code[:3] + "-" + c.Code[3:]})
 		if err != nil || len(p.Items) != 1 || p.Items[0].UsedCount != 0 {
 			t.Fatal("lookup consumed coupon", err)
 		}
@@ -218,9 +235,7 @@ func TestPostgresCouponIssuanceRevocationAndIsolation(t *testing.T) {
 	if err != nil || !repeated || replay.Status != "revoked" || replay.ID != c.ID {
 		t.Fatal("retry revived coupon", err)
 	}
-	if _, _, err := store.Create(ctx, a, takenKey, in); err != ErrCodeTaken {
-		t.Fatal("revoked number reused", err)
-	}
+	assertReserved()
 	other := in
 	other.ReferrerClientID = nil
 	if _, _, err := store.Create(ctx, b, takenKey, other); err != nil {

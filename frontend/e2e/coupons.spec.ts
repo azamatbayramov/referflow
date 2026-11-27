@@ -1,4 +1,4 @@
-import { randomBytes, randomInt } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
 import { manage } from './helpers'
 async function login(page: Page) {
@@ -24,7 +24,7 @@ async function login(page: Page) {
     page.getByRole('heading', { name: 'Купоны', exact: true }),
   ).toBeVisible()
 }
-test('issue percent coupon, find manual code, inspect terms and permanently revoke', async ({
+test('issue percent coupon, find generated code, inspect terms and permanently revoke', async ({
   page,
   context,
   baseURL,
@@ -40,11 +40,7 @@ test('issue percent coupon, find manual code, inspect terms and permanently revo
     data: { name: 'Тестовый Рекомендатель' },
   })
   const client = await clientResponse.json()
-  const code = String(randomInt(1000000)).padStart(6, '0')
   await page.getByRole('button', { name: 'Создать купон', exact: true }).click()
-  await page
-    .getByLabel('Номер на бумаге (необязательно)')
-    .fill(`${code.slice(0, 3)}-${code.slice(3)}`)
   await page.getByLabel('Скидка, %', { exact: true }).fill('12,50')
   await page.getByLabel('Без общего лимита', { exact: true }).uncheck()
   await page.getByLabel('Всего использований', { exact: true }).fill('5')
@@ -70,6 +66,13 @@ test('issue percent coupon, find manual code, inspect terms and permanently revo
   await page
     .getByRole('button', { name: 'Сохранить купон', exact: true })
     .click()
+  await expect(page.getByText('Купон создан.', { exact: true })).toBeVisible()
+  const issued = await (
+    await context.request.post('/api/coupons/search', { headers, data: {} })
+  ).json()
+  expect(issued.items).toHaveLength(1)
+  const code = issued.items[0].code
+  expect(code).toMatch(/^\d{6}$/)
   await expect(
     page.getByRole('heading', { name: `Купон № ${code}`, exact: true }),
   ).toBeVisible()
@@ -112,12 +115,12 @@ test('issue percent coupon, find manual code, inspect terms and permanently revo
   expect(search.items[0].status).toBe('revoked')
   expect(search.items[0].used_count).toBe(0)
   expect(search.items[0].referrer_client_id).toBe(client.id)
-  const taken = await context.request.post('/api/coupons', {
+  const override = await context.request.post('/api/coupons', {
     headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
     data: { code, discount_type: 'fixed', value: '10' },
   })
-  expect(taken.status()).toBe(409)
-  expect((await taken.json()).status).toBe('code_taken')
+  expect(override.status()).toBe(400)
+  expect((await override.json()).status).toBe('invalid_request')
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

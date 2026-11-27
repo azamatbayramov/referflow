@@ -83,12 +83,9 @@ func (s Store) Create(ctx context.Context, owner, key string, in Input) (Coupon,
 	}
 	inserted := false
 	for range 20 {
-		code := in.Code
-		if code == "" {
-			code, err = randomCode()
-			if err != nil {
-				return Coupon{}, false, err
-			}
+		code, err := randomCode()
+		if err != nil {
+			return Coupon{}, false, err
 		}
 		command, err := tx.Exec(ctx, `INSERT INTO coupons(id,specialist_id,code,discount_type,value_minor,restrictions,total_limit,per_client_limit,first_visit_only,expires_on,expires_at,referrer_client_id,creation_key,creation_hash)
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(specialist_id,code) DO NOTHING`, id, owner, code, in.DiscountType, value, in.Restrictions, in.TotalLimit, in.PerClientLimit, in.FirstVisitOnly, in.ExpiresOn, expires, in.ReferrerClientID, key, hash)
@@ -99,12 +96,9 @@ func (s Store) Create(ctx context.Context, owner, key string, in Input) (Coupon,
 			inserted = true
 			break
 		}
-		if in.Code != "" {
-			return Coupon{}, false, ErrCodeTaken
-		}
 	}
 	if !inserted {
-		return Coupon{}, false, ErrCodeTaken
+		return Coupon{}, false, errors.New("cannot allocate coupon number")
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO coupon_events(coupon_id,specialist_id,action) VALUES($1,$2,'created')`, id, owner); err != nil {
 		return Coupon{}, false, err

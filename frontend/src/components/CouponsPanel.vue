@@ -2,7 +2,6 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 type Input = {
-  code: string
   discount_type: 'percent' | 'fixed'
   value: string
   restrictions: string
@@ -12,7 +11,7 @@ type Input = {
   expires_on: string | null
   referrer_client_id: string | null
 }
-type Coupon = Omit<Input, 'code'> & {
+type Coupon = Input & {
   id: string
   code: string
   used_count: number
@@ -29,7 +28,6 @@ class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly kind: string,
   ) {
     super(message)
   }
@@ -72,7 +70,6 @@ const labels: Record<string, string> = {
 }
 function empty(): Input {
   return {
-    code: '',
     discount_type: 'percent',
     value: '10',
     restrictions: '',
@@ -109,23 +106,19 @@ async function api(
     throw new Error('Сеанс завершен. Войдите снова.')
   }
   if (!response.ok) {
-    const data = await response.json().catch(() => ({ status: '' }))
     throw new ApiError(
-      data.status === 'code_taken'
-        ? 'Этот номер уже использован. Укажите другой номер или оставьте поле пустым.'
-        : response.status === 400
-          ? path.endsWith('/revoke')
-            ? 'Укажите причину отзыва (1–500 символов).'
-            : 'Проверьте номер, номинал, лимиты и срок купона.'
-          : response.status === 429
-            ? 'Слишком много запросов. Подождите минуту.'
-            : response.status === 404
-              ? 'Купон недоступен. Обновите список.'
-              : response.status === 409
-                ? 'Данные повторной отправки различаются. Проверьте поиск перед новой выдачей.'
-                : 'Не удалось выполнить действие. Повторите попытку.',
+      response.status === 400
+        ? path.endsWith('/revoke')
+          ? 'Укажите причину отзыва (1–500 символов).'
+          : 'Проверьте номер, номинал, лимиты и срок купона.'
+        : response.status === 429
+          ? 'Слишком много запросов. Подождите минуту.'
+          : response.status === 404
+            ? 'Купон недоступен. Обновите список.'
+            : response.status === 409
+              ? 'Данные повторной отправки различаются. Проверьте поиск перед новой выдачей.'
+              : 'Не удалось выполнить действие. Повторите попытку.',
       response.status,
-      data.status,
     )
   }
   return response.json()
@@ -252,10 +245,7 @@ async function save() {
     notice.value = 'Купон создан.'
   } catch (e) {
     if (alive) {
-      if (
-        e instanceof ApiError &&
-        (e.status === 400 || e.kind === 'code_taken')
-      ) {
+      if (e instanceof ApiError && e.status === 400) {
         frozen.value = null
         key = crypto.randomUUID()
       }
@@ -397,16 +387,8 @@ onBeforeUnmount(() => {
         </div>
         <form v-if="form" :aria-busy="busy" @submit.prevent="save">
           <fieldset class="coupon-fields" :disabled="busy || !!frozen">
-            <label for="coupon-code">Номер на бумаге (необязательно)</label
-            ><input
-              id="coupon-code"
-              v-model="draft.code"
-              inputmode="numeric"
-              maxlength="20"
-            />
-            <p class="field-help">
-              Оставьте пустым для автоматического номера. В ручном номере 1–6
-              цифр, пробелы и дефисы допустимы. Номер 12 станет 000012.
+            <p class="muted">
+              Номер купона присваивается автоматически после сохранения.
             </p>
             <label for="discount-type">Вид скидки</label
             ><select id="discount-type" v-model="draft.discount_type">

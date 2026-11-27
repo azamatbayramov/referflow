@@ -430,12 +430,6 @@ paths:
               - discount_type
               - value
               properties:
-                code:
-                  type: string
-                  maxLength: 20
-                  default: ''
-                  description: 'Optional manual paper number: 1–6 ASCII digits, spaces/hyphens removed, left-padded to six digits.
-                    Empty generates a cryptographically random six-digit code. Permanent uniqueness per specialist.'
                 discount_type:
                   type: string
                   enum:
@@ -519,8 +513,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Status'
         '409':
-          description: 'code_taken: number already reserved, including expired/revoked coupons; conflict: idempotency key with
-            another payload'
+          description: Idempotency key reused with another payload
           content:
             application/json:
               schema:
@@ -552,8 +545,7 @@ paths:
                   type: string
                   maxLength: 20
                   default: ''
-                  description: 'Optional manual paper number: 1–6 ASCII digits, spaces/hyphens removed, left-padded to six digits.
-                    Empty generates a cryptographically random six-digit code. Permanent uniqueness per specialist.'
+                  description: Exact number lookup. Spaces and hyphens are removed; 1–6 digits are left-padded to six. Empty lists own coupons.
                 state:
                   type: string
                   enum:
@@ -857,6 +849,8 @@ components:
       properties:
         code:
           type: string
+          readOnly: true
+          description: Server-generated six-digit number, never reused for this specialist. The create API rejects a code field.
           pattern: ^[0-9]{6}$
         discount_type:
           type: string
@@ -965,7 +959,7 @@ components:
       properties:
         status:
           type: string
-          enum: [code_taken, too_many_requests, not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
+          enum: [too_many_requests, not_found, conflict, invalid_request, invalid_credentials, unauthenticated, csrf_failed, method_not_allowed, request_too_large, unsupported_media_type, too_many_attempts, unavailable]
   responses:
     BadRequest:
       description: Malformed, extra, or invalid input fields

@@ -17,14 +17,12 @@ import (
 )
 
 var (
-	ErrInvalid   = errors.New("invalid coupon")
-	ErrNotFound  = errors.New("coupon not found")
-	ErrConflict  = errors.New("coupon conflict")
-	ErrCodeTaken = errors.New("coupon code taken")
+	ErrInvalid  = errors.New("invalid coupon")
+	ErrNotFound = errors.New("coupon not found")
+	ErrConflict = errors.New("coupon conflict")
 )
 
 type Input struct {
-	Code             string  `json:"code"`
 	DiscountType     string  `json:"discount_type"`
 	Value            string  `json:"value"`
 	Restrictions     string  `json:"restrictions"`
@@ -119,13 +117,6 @@ func validText(s string, multiline bool) bool {
 	return true
 }
 func normalize(in Input) (Input, int64, *time.Time, error) {
-	if in.Code != "" {
-		code, err := normalizeCode(in.Code)
-		if err != nil {
-			return in, 0, nil, err
-		}
-		in.Code = code
-	}
 	v, err := parseValue(in.Value)
 	if err != nil {
 		return in, 0, nil, err

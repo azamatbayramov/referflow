@@ -94,9 +94,6 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ErrConflict):
 			code = 409
 			status = "conflict"
-		case errors.Is(err, ErrCodeTaken):
-			code = 409
-			status = "code_taken"
 		}
 		reply(w, code, map[string]string{"status": status})
 		return
