@@ -6,6 +6,8 @@ Referflow is a Go + Vue monorepo. This baseline contains infrastructure only: no
 
 Read `README.md`, the relevant `docs/` page, and the nearest nested `AGENTS.md` before editing. The user request defines the task scope; do not copy personal profiles into repository instructions.
 
+For coupon/CRM work, read `docs/coupon-mvp.md` and the relevant task in `docs/mvp-backlog.md`. These describe planned behavior, not shipped features. Preserve the explicit CRM field exclusions and distinguish agreed rules from open design details. Implement only the task requested, not the entire backlog.
+
 | Area | Ownership |
 | --- | --- |
 | `backend/` | Go API, configuration, database access, future SQL migrations |
