@@ -2,13 +2,19 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ClientsPanel from './components/ClientsPanel.vue'
 import CouponsPanel from './components/CouponsPanel.vue'
+import StatisticsPanel from './components/StatisticsPanel.vue'
 
 type Session = {
   user: { id: string; login: string; name: string }
   expires_at: string
   csrf_token: string
 }
-const section = ref<'clients' | 'coupons'>('clients')
+const section = ref<'clients' | 'coupons' | 'statistics'>('clients')
+const couponUsage = ref<'all' | 'used' | 'unused'>('all')
+function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
+  couponUsage.value = usage
+  section.value = 'coupons'
+}
 const state = ref<'loading' | 'unavailable' | 'guest' | 'member'>('loading')
 const session = ref<Session | null>(null)
 const loginName = ref('')
@@ -248,14 +254,28 @@ onBeforeUnmount(() => {
         <button
           type="button"
           :aria-pressed="section === 'coupons'"
-          @click="section = 'coupons'"
+          @click="showCoupons()"
         >
           Купоны
         </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'statistics'"
+          @click="section = 'statistics'"
+        >
+          Статистика
+        </button>
       </nav>
-      <CouponsPanel
-        v-if="section === 'coupons'"
+      <StatisticsPanel
+        v-if="section === 'statistics'"
         :key="session.user.id"
+        @coupons="showCoupons"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+      />
+      <CouponsPanel
+        v-else-if="section === 'coupons'"
+        :key="session.user.id"
+        :initial-usage="couponUsage"
         :csrf-token="session.csrf_token"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />

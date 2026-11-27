@@ -34,7 +34,11 @@ class ApiError extends Error {
     super(message)
   }
 }
-const props = defineProps<{ csrfToken: string }>()
+const props = defineProps<{
+  csrfToken: string
+  initialUsage?: 'all' | 'used' | 'unused'
+}>()
+const usage = ref(props.initialUsage ?? 'all')
 const emit = defineEmits<{ expired: [] }>()
 const items = ref<Coupon[]>([]),
   selected = ref<Coupon | null>(null),
@@ -136,7 +140,12 @@ async function load(reset = true) {
   try {
     const page = await api(
       '/coupons/search',
-      { code: query.value, state: state.value, offset: next },
+      {
+        code: query.value,
+        state: state.value,
+        usage: usage.value,
+        offset: next,
+      },
       'POST',
       controller.signal,
     )
@@ -354,8 +363,15 @@ onBeforeUnmount(() => {
           ><select id="coupon-state" v-model="state" @change="load()">
             <option value="all">Все</option>
             <option value="available">Доступные</option>
+            <option value="exhausted">Исчерпан общий лимит</option>
             <option value="expired">Истекшие</option>
             <option value="revoked">Отозванные</option>
+          </select>
+          <label for="coupon-usage">Применения купона</label>
+          <select id="coupon-usage" v-model="usage" @change="load()">
+            <option value="all">Все купоны</option>
+            <option value="used">Есть неотмененные применения</option>
+            <option value="unused">Нет неотмененных применений</option>
           </select>
         </form>
         <p v-if="loading" role="status" class="muted">Загружаем купоны…</p>

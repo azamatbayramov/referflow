@@ -133,11 +133,17 @@ func (s Store) Search(ctx context.Context, owner string, in Search) (Page, error
 	if in.State == "" {
 		in.State = "all"
 	}
+	if in.Usage == "" {
+		in.Usage = "all"
+	}
+	if in.Usage != "all" && in.Usage != "used" && in.Usage != "unused" {
+		return Page{}, ErrInvalid
+	}
 	if in.State != "all" && in.State != "available" && in.State != "expired" && in.State != "revoked" && in.State != "exhausted" {
 		return Page{}, ErrInvalid
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT * FROM (`+selection+`WHERE c.specialist_id=$1 AND ($2='' OR c.code=$2)) AS found
- WHERE ($3='all' OR found.status=$3) ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.Code, in.State, in.Offset)
+ WHERE ($3='all' OR found.status=$3) AND ($5='all' OR ($5='used' AND found.used_count>0) OR ($5='unused' AND found.used_count=0)) ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.Code, in.State, in.Offset, in.Usage)
 	if err != nil {
 		return Page{}, err
 	}
