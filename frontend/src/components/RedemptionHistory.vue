@@ -13,7 +13,11 @@ const props = defineProps<{
   refreshToken?: number
   title?: string
 }>()
-const emit = defineEmits<{ expired: []; changed: [] }>()
+const emit = defineEmits<{
+  expired: []
+  changed: []
+  pending: [pending: boolean]
+}>()
 const items = ref<Redemption[]>([]),
   hasMore = ref(false),
   offset = ref(0),
@@ -21,6 +25,7 @@ const items = ref<Redemption[]>([]),
   busy = ref(false),
   error = ref(''),
   notice = ref('')
+watch(busy, (value) => emit('pending', value))
 const cancelId = ref(''),
   reason = ref('')
 const prefix = useId()
@@ -99,6 +104,7 @@ watch(
 onBeforeUnmount(() => {
   alive = false
   controller?.abort()
+  emit('pending', false)
 })
 </script>
 <template>

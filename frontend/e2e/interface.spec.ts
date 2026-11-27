@@ -34,7 +34,12 @@ async function setup(
   }
   const response = await context.request.post('/api/coupons', {
     headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
-    data: { discount_type: 'percent', value: '10', first_visit_only: first },
+    data: {
+      discount_type: 'percent',
+      value: '10',
+      first_visit_only: first,
+      total_limit: first ? 1 : null,
+    },
   })
   expect(response.status()).toBe(201)
   return { coupon: await response.json(), headers }
@@ -155,6 +160,60 @@ test('inline client survives lost response and section switches with one creatio
     })
   ).json()
   expect(uses.items).toHaveLength(1)
+
+  // Commit cancellation on the server, hold its response, and switch tabs.
+  // The mounted history must still refresh the coupon after the response.
+  await expect(
+    form.getByRole('button', {
+      name: 'Подтвердить использование',
+      exact: true,
+    }),
+  ).toBeDisabled()
+  let release!: () => void
+  let persisted!: () => void
+  const hold = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const saved = new Promise<void>((resolve) => {
+    persisted = resolve
+  })
+  await page.route('**/api/redemptions/*/cancel', async (route) => {
+    const response = await route.fetch()
+    persisted()
+    await hold
+    await route.fulfill({ response })
+  })
+  await page.getByRole('button', { name: 'История', exact: true }).click()
+  const history = page.getByRole('region', {
+    name: 'История этого купона',
+    exact: true,
+  })
+  await history
+    .getByRole('button', { name: 'Отменить использование', exact: true })
+    .click()
+  await history
+    .getByLabel('Причина отмены использования', { exact: true })
+    .fill('Проверка перехода между вкладками')
+  await history
+    .getByRole('button', { name: 'Подтвердить отмену', exact: true })
+    .click()
+  await saved
+  try {
+    await page
+      .getByRole('button', { name: 'Использовать', exact: true })
+      .click()
+    await expect(
+      page.getByRole('button', { name: '← Назад к купонам', exact: true }),
+    ).toBeDisabled()
+  } finally {
+    release()
+  }
+  await expect(
+    form.getByRole('button', {
+      name: 'Подтвердить использование',
+      exact: true,
+    }),
+  ).toBeEnabled()
   await page
     .getByRole('button', { name: '← Назад к купонам', exact: true })
     .click()

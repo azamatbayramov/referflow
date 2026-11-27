@@ -27,6 +27,7 @@ const props = defineProps<{
   coupon: Coupon
   csrfToken: string
   refreshToken: number
+  blocked?: boolean
 }>()
 const emit = defineEmits<{
   expired: []
@@ -34,7 +35,8 @@ const emit = defineEmits<{
   pending: [pending: boolean]
 }>()
 const addingClient = ref(false),
-  quickPending = ref(false)
+  quickPending = ref(false),
+  recipientPending = ref(false)
 function chooseCreated(client: Client) {
   clients.value = [client]
   clientId.value = client.id
@@ -53,7 +55,11 @@ const query = ref(''),
   notice = ref(''),
   frozen = ref<Input | null>(null)
 watch(
-  () => busy.value || !!frozen.value || quickPending.value,
+  () =>
+    busy.value ||
+    !!frozen.value ||
+    quickPending.value ||
+    recipientPending.value,
   (value) => emit('pending', value),
 )
 let key = crypto.randomUUID()
@@ -67,7 +73,8 @@ function selectionChanged() {
   key = crypto.randomUUID()
 }
 async function search() {
-  if (busy.value || frozen.value) return
+  if (busy.value || frozen.value || recipientPending.value || props.blocked)
+    return
   controller?.abort()
   const current = new AbortController()
   controller = current
@@ -104,7 +111,8 @@ async function search() {
   }
 }
 async function apply() {
-  if (busy.value || loading.value) return
+  if (busy.value || loading.value || recipientPending.value || props.blocked)
+    return
   busy.value = true
   error.value = ''
   notice.value = ''
@@ -181,8 +189,13 @@ onBeforeUnmount(() => {
             id="redemption-client-search"
             v-model="query"
             maxlength="120"
-            :disabled="busy || !!frozen"
-          /><button class="secondary" :disabled="busy || loading || !!frozen">
+            :disabled="busy || !!frozen || recipientPending || blocked"
+          /><button
+            class="secondary"
+            :disabled="
+              busy || loading || !!frozen || recipientPending || blocked
+            "
+          >
             Найти
           </button>
         </div>
@@ -190,7 +203,7 @@ onBeforeUnmount(() => {
       <button
         class="text-button add-client-link"
         type="button"
-        :disabled="busy || !!frozen"
+        :disabled="busy || !!frozen || recipientPending || blocked"
         @click="addingClient = true"
       >
         + Добавить клиента здесь
@@ -205,7 +218,10 @@ onBeforeUnmount(() => {
       @cancel="addingClient = false"
     />
     <form v-show="!addingClient" @submit.prevent="apply">
-      <fieldset class="coupon-fields" :disabled="busy || !!frozen">
+      <fieldset
+        class="coupon-fields"
+        :disabled="busy || !!frozen || recipientPending || blocked"
+      >
         <label for="redemption-client">Получатель скидки</label
         ><select
           id="redemption-client"
@@ -244,7 +260,11 @@ onBeforeUnmount(() => {
       <button
         class="primary"
         :disabled="
-          busy || loading || (!frozen && coupon.status !== 'available')
+          busy ||
+          loading ||
+          recipientPending ||
+          blocked ||
+          (!frozen && coupon.status !== 'available')
         "
       >
         {{
@@ -264,6 +284,7 @@ onBeforeUnmount(() => {
         :csrf-token="csrfToken"
         :refresh-token="refreshToken"
         title="История получателя скидки"
+        @pending="recipientPending = $event"
         @expired="emit('expired')"
         @changed="emit('changed')"
       />

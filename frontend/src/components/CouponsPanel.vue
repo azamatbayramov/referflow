@@ -52,7 +52,8 @@ const query = ref(''),
   busy = ref(false)
 const usageRevision = ref(0)
 const tab = ref<'use' | 'share' | 'history'>('use')
-const usePending = ref(false)
+const usePending = ref(false),
+  historyPending = ref(false)
 const searchInput = ref<HTMLInputElement | null>(null)
 const listTitle = ref<HTMLElement | null>(null)
 let listScroll = 0
@@ -177,7 +178,8 @@ async function focusEditor() {
   editor.value?.scrollIntoView({ block: 'start' })
 }
 async function create() {
-  if (busy.value || frozen.value || usePending.value) return
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
   listScroll = window.scrollY
   clientController?.abort()
   clientLoading.value = false
@@ -199,7 +201,7 @@ async function open(c: Coupon) {
   if (
     busy.value ||
     frozen.value ||
-    (usePending.value && selected.value?.id !== c.id)
+    ((usePending.value || historyPending.value) && selected.value?.id !== c.id)
   )
     return
   if (!selected.value) listScroll = window.scrollY
@@ -329,7 +331,8 @@ async function refreshUsage() {
   }
 }
 async function close() {
-  if (busy.value || frozen.value || usePending.value) return
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
   clientController?.abort()
   clientLoading.value = false
   form.value = false
@@ -342,7 +345,8 @@ async function close() {
   window.scrollTo({ top: listScroll })
 }
 async function showList(nextUsage: 'all' | 'used' | 'unused') {
-  if (busy.value || frozen.value || usePending.value) return
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
   await close()
   usage.value = nextUsage
   state.value = 'all'
@@ -479,7 +483,7 @@ onBeforeUnmount(() => {
       <button
         class="text-button back-button"
         type="button"
-        :disabled="busy || !!frozen || usePending"
+        :disabled="busy || !!frozen || usePending || historyPending"
         @click="close"
       >
         ← Назад к купонам
@@ -685,6 +689,7 @@ onBeforeUnmount(() => {
             :coupon="selected"
             :csrf-token="csrfToken"
             :refresh-token="usageRevision"
+            :blocked="historyPending"
             @expired="emit('expired')"
             @changed="refreshUsage"
             @pending="usePending = $event"
@@ -695,12 +700,13 @@ onBeforeUnmount(() => {
           :id="selected.id"
           :coupon="selected"
         />
-        <div v-if="tab === 'history'" class="coupon-action-card">
+        <div v-show="tab === 'history'" class="coupon-action-card">
           <RedemptionHistory
             :coupon-id="selected.id"
             :csrf-token="csrfToken"
             :refresh-token="usageRevision"
             title="История этого купона"
+            @pending="historyPending = $event"
             @expired="emit('expired')"
             @changed="refreshUsage"
           />
