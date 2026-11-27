@@ -86,7 +86,7 @@ func TestPostgresMigrationsAndSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 3 {
 		t.Fatal("migration applied more than once", err)
 	}
 	store := Store{Pool: pool}

@@ -39,7 +39,7 @@ func TestHealthContract(t *testing.T) {
 				return tc.dbError
 			})
 			res := httptest.NewRecorder()
-			NewHandler(db, nil).ServeHTTP(res, httptest.NewRequest(tc.method, tc.path, nil))
+			NewHandler(db, nil, nil).ServeHTTP(res, httptest.NewRequest(tc.method, tc.path, nil))
 			if res.Code != tc.code || strings.TrimSpace(res.Body.String()) != `{"status":"`+tc.status+`"}` {
 				t.Fatalf("got %d %s", res.Code, res.Body.String())
 			}
@@ -57,7 +57,7 @@ func TestHealthContract(t *testing.T) {
 }
 
 func TestHeadHasNoBody(t *testing.T) {
-	server := httptest.NewServer(NewHandler(pingFunc(func(context.Context) error { return nil }), nil))
+	server := httptest.NewServer(NewHandler(pingFunc(func(context.Context) error { return nil }), nil, nil))
 	defer server.Close()
 	res, err := server.Client().Head(server.URL + "/api/healthz")
 	if err != nil {
@@ -80,7 +80,7 @@ func TestReadinessPropagatesCancellation(t *testing.T) {
 	})
 	req := httptest.NewRequest("GET", "/api/readyz", nil).WithContext(ctx)
 	res := httptest.NewRecorder()
-	NewHandler(db, nil).ServeHTTP(res, req)
+	NewHandler(db, nil, nil).ServeHTTP(res, req)
 	if res.Code != http.StatusServiceUnavailable {
 		t.Fatalf("got %d", res.Code)
 	}

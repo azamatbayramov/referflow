@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import ClientsPanel from './components/ClientsPanel.vue'
 
 type Session = {
   user: { id: string; login: string; name: string }
@@ -234,6 +235,11 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <ClientsPanel
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+      />
       <section class="profile" aria-labelledby="profile-title">
         <div class="avatar" aria-hidden="true">
           {{ session.user.name.slice(0, 1).toUpperCase() }}
