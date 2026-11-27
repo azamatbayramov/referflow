@@ -200,10 +200,6 @@ input:focus {
 .primary:hover:not(:disabled) {
   background: #183b29;
 }
-.primary span {
-  font-size: 22px;
-  line-height: 1;
-}
 .login-help {
   margin: 24px 0 0;
   color: #6b7768;
@@ -330,9 +326,6 @@ footer {
   .welcome h1 {
     font-size: 38px;
   }
-  .welcome h1 br:first-of-type {
-    display: none;
-  }
   .welcome .eyebrow {
     margin-bottom: 16px;
   }
@@ -357,6 +350,13 @@ footer {
   }
   .profile {
     padding: 22px;
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    align-items: start;
+  }
+  .session-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 @media (prefers-reduced-motion: no-preference) {

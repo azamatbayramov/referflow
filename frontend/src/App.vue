@@ -45,7 +45,8 @@ async function refresh() {
     if (response.status === 401) {
       showGuest(session.value ? 'Сеанс завершен. Войдите снова.' : '')
     } else if (response.ok) {
-      acceptSession((await response.json()) as Session)
+      const value = (await response.json()) as Session
+      if (!controller.signal.aborted) acceptSession(value)
     } else {
       throw new Error('unavailable')
     }
@@ -149,7 +150,16 @@ onBeforeUnmount(() => {
           Ваше пространство для работы с рекомендациями клиентов.
         </p>
         <div class="welcome-mark" aria-hidden="true">
-          <span>r</span><span>↗</span>
+          <span>r</span>
+          <span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 18 18 6M6 6h12v12"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+            </svg>
+          </span>
         </div>
       </section>
       <section class="login-card" aria-labelledby="login-title">
@@ -184,7 +194,20 @@ onBeforeUnmount(() => {
             {{ error }}
           </p>
           <button class="primary" type="submit" :disabled="busy">
-            {{ busy ? 'Входим…' : 'Войти' }}<span aria-hidden="true">↗</span>
+            {{ busy ? 'Входим…' : 'Войти' }}
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M6 18 18 6M6 6h12v12"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+            </svg>
           </button>
         </form>
         <p class="login-help">Если нет доступа, обратитесь к администратору.</p>
