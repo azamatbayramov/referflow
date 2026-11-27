@@ -1,6 +1,7 @@
 package coupons
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/azamatbayramov/referflow/backend/internal/auth"
@@ -8,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Handler struct{ Store Store }
@@ -22,6 +24,21 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
 	code := 200
 	switch {
+	case r.URL.Path == "/api/coupons/statistics":
+		if !method(w, r, "GET") {
+			return
+		}
+		if r.URL.RawQuery != "" {
+			reply(w, 400, map[string]string{"status": "invalid_request"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		r = r.WithContext(ctx)
+		if !h.lookup(w, r, user.ID) {
+			return
+		}
+		result, err = h.Store.Statistics(ctx, user.ID)
 	case r.URL.Path == "/api/coupons":
 		if !method(w, r, "POST") {
 			return

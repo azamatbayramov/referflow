@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Referflow API
-  version: 0.6.0
-  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public read-only QR cards are available.
+  version: 0.7.0
+  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public read-only QR cards and own pilot statistics are available.
 servers:
   - url: /
 paths:
@@ -541,6 +541,11 @@ paths:
               type: object
               additionalProperties: false
               properties:
+                usage:
+                  type: string
+                  enum: [all, used, unused]
+                  default: all
+                  description: Intersects code/state. Used means at least one non-canceled use; unused includes coupons whose uses were all canceled.
                 code:
                   type: string
                   maxLength: 20
@@ -1032,6 +1037,38 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /api/coupons/statistics:
+    get:
+      operationId: getCouponStatistics
+      summary: Read own all-time pilot statistics
+      description: Session owner only. No query parameters or date filters. Counts non-canceled uses; coupon revocation/expiry
+        and client archive/contact corrections retain historical results. A single SQL statement provides a consistent
+        snapshot within five seconds. Shares the 120/minute per-specialist coupon lookup budget. Does not expose client
+        details, calculate revenue or infer actual visits. Responses are no-store. UI used share = used_coupons /
+        issued_coupons, undefined and displayed as an em dash when no coupons; numerator is coupons, not operations.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Own all-time counts and snapshot timestamp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponStatistics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          description: 'Shared coupon lookup budget exhausted. Retry-After: 60.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     sessionCookie:
@@ -1048,6 +1085,53 @@ components:
         type: string
       description: Exact allowlisted browser origin, including scheme and port. Missing or null origins are rejected for writes.
   schemas:
+    CouponStatistics:
+      type: object
+      additionalProperties: false
+      required:
+      - as_of
+      - issued_coupons
+      - used_coupons
+      - active_redemptions
+      - unique_clients
+      - first_visit_clients
+      - canceled_redemptions
+      properties:
+        as_of:
+          type: string
+          format: date-time
+          description: Server statement start; all aggregates use one MVCC snapshot.
+        issued_coupons:
+          type: integer
+          format: int64
+          minimum: 0
+          description: All own issued coupons, including revoked and expired.
+        used_coupons:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Distinct coupons with at least one non-canceled use; repeated uses count once.
+        active_redemptions:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Non-canceled own coupon operations, not actual appointments.
+        unique_clients:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Distinct client IDs among non-canceled uses; archived clients remain included.
+        first_visit_clients:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Distinct client IDs with a non-canceled manually confirmed first visit. Not independently verified
+            new visitors.
+        canceled_redemptions:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Canceled operations, counted once regardless of repeated cancellation requests.
     PublicCoupon:
       type: object
       additionalProperties: false

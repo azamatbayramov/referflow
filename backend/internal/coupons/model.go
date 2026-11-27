@@ -57,6 +57,7 @@ type Event struct {
 	OccurredAt time.Time `json:"occurred_at"`
 }
 type Search struct {
+	Usage  string `json:"usage"`
 	Code   string `json:"code"`
 	State  string `json:"state"`
 	Offset int    `json:"offset"`

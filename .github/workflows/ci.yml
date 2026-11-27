@@ -112,6 +112,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Browser checks
         run: make e2e
+      - name: Verify backup and restore on artificial databases
+        run: bash scripts/check-backup-restore.sh
       - name: Container logs
         if: failure()
         run: docker compose logs --no-color --tail=150
