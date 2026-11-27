@@ -730,3 +730,275 @@ textarea {
 .cancel-form .search-row {
   flex-wrap: wrap;
 }
+
+/* Public document and paper card share the same full, unabridged terms. */
+.coupon-share {
+  margin: 24px 0;
+  padding: 20px 0;
+  border-block: 1px solid #d9dfd3;
+}
+.coupon-share a,
+.public-login {
+  color: #203d32;
+  text-underline-offset: 4px;
+}
+.public-coupon-page {
+  max-width: 960px;
+}
+.public-coupon-main {
+  padding: 36px 0;
+}
+.public-coupon-card {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: clamp(20px, 5vw, 40px);
+  background: #fff;
+  border: 1px solid #d9dfd3;
+  border-radius: 20px;
+  overflow-wrap: anywhere;
+}
+.public-card-top .card-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.public-card-top h1 {
+  font-size: clamp(24px, 4vw, 32px);
+  margin: 20px 0 24px;
+  letter-spacing: -0.03em;
+}
+.public-card-top h1 strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.public-card-offer {
+  border-top: 1px solid #d9dfd3;
+  padding-top: 20px;
+}
+.public-discount {
+  font-size: clamp(36px, 7vw, 64px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  margin: 0;
+  line-height: 1.2;
+}
+.public-card-offer > span {
+  color: #526a59;
+}
+.public-status {
+  display: inline-block;
+  margin: 20px 0 0;
+  font-weight: 600;
+  background: #eaf1e7;
+  padding: 8px 14px;
+  border-radius: 24px;
+}
+.public-status-blocked {
+  color: #8b3535;
+  background: #faeeee;
+}
+.public-checked {
+  font-size: 12px;
+  color: #596b5e;
+  margin-bottom: 24px;
+}
+.public-card-terms {
+  display: grid;
+  gap: 14px;
+  margin: 24px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.public-card-terms > div {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 16px;
+}
+.public-card-terms dt {
+  color: #596b5e;
+}
+.public-card-terms dd {
+  margin: 0;
+}
+.public-restrictions {
+  border-top: 1px solid #d9dfd3;
+  padding: 20px 0 0;
+}
+.public-restrictions h2 {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+.public-restrictions p {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.public-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 24px;
+}
+.public-card-bottom p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.public-qr {
+  width: 152px;
+  height: 152px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+.public-validity {
+  margin: 20px 0 0;
+  border-top: 1px dashed #d9dfd3;
+  padding-top: 16px;
+  color: #596b5e;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.public-actions {
+  max-width: 600px;
+  margin: 24px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.public-actions button {
+  flex: 1 1 220px;
+  padding: 14px 20px;
+}
+.public-actions > p,
+.public-copy-fallback {
+  flex-basis: 100%;
+  font-size: 14px;
+}
+.public-copy-fallback input {
+  width: 100%;
+}
+@media (max-width: 480px) {
+  .public-coupon-page {
+    padding: 20px 14px;
+  }
+  .public-login {
+    font-size: 12px;
+  }
+  .public-card-terms > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .public-card-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .public-coupon-card {
+    padding: 20px;
+  }
+}
+@media print {
+  @page {
+    size: A5 portrait;
+    margin: 0;
+  }
+  html,
+  body {
+    min-width: 0;
+    background: #fff;
+    color: #000;
+  }
+  .public-coupon-page {
+    display: block;
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    padding: 8mm;
+  }
+  .public-controls {
+    display: none !important;
+  }
+  .public-coupon-main {
+    padding: 0;
+  }
+  .public-coupon-card {
+    max-width: none;
+    border: 1px solid #888;
+    border-radius: 0;
+    margin: 0;
+    padding: 5mm;
+  }
+  .public-card-top .card-label {
+    font-size: 7pt;
+  }
+  .public-card-top h1 {
+    font-size: 18pt;
+    margin: 3mm 0;
+  }
+  .public-card-top,
+  .public-card-offer,
+  .public-status,
+  .public-card-terms > div,
+  .public-card-bottom,
+  .public-validity {
+    break-inside: avoid;
+  }
+  .public-card-offer {
+    padding-top: 3mm;
+  }
+  .public-discount {
+    font-size: 30pt;
+  }
+  .public-card-offer > span {
+    font-size: 9pt;
+  }
+  .public-status {
+    margin-top: 3mm;
+    padding: 1.5mm 3mm;
+    font-size: 10pt;
+    background: none;
+    border: 1px solid currentColor;
+  }
+  .public-checked {
+    margin: 2mm 0 3mm;
+  }
+  .public-card-terms {
+    font-size: 10pt;
+    gap: 1.5mm;
+    margin: 3mm 0;
+    line-height: 1.4;
+  }
+  .public-card-terms > div {
+    grid-template-columns: 1fr 1.3fr;
+    gap: 3mm;
+  }
+  .public-restrictions {
+    padding-top: 3mm;
+  }
+  .public-restrictions h2 {
+    font-size: 10pt;
+  }
+  .public-restrictions p {
+    font-size: 10pt;
+    line-height: 1.4;
+    margin: 2mm 0;
+  }
+  .public-card-bottom {
+    flex-direction: row;
+    align-items: center;
+    gap: 4mm;
+    margin-top: 3mm;
+  }
+  .public-qr {
+    width: 26mm;
+    height: 26mm;
+  }
+  .public-checked,
+  .public-validity,
+  .public-card-bottom p {
+    font-size: 8pt;
+    line-height: 1.4;
+  }
+  .public-validity {
+    margin-top: 3mm;
+    padding-top: 2mm;
+  }
+}

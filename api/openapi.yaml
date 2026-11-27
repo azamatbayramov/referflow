@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Referflow API
-  version: 0.5.0
-  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public QR pages are planned.
+  version: 0.6.0
+  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public read-only QR cards are available.
 servers:
   - url: /
 paths:
@@ -992,6 +992,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+  /api/public/coupons/{id}:
+    get:
+      operationId: getPublicCoupon
+      summary: Read public terms and current overall status by UUIDv4
+      description: 'No session required; ignores cookies and does not record an event, reserve or consume a use. Separate
+        public DTO never includes clients, owner, referrer, login, usage count, audit, or revocation/cancellation
+        reasons. UUID is a shareable read capability, not write authorization. No public short-code search. All responses
+        have Cache-Control: no-store, Referrer-Policy: no-referrer and X-Robots-Tag: noindex, nofollow, noarchive.
+        Database work has a two-second deadline. Overall available status does not prove individual eligibility.'
+      security: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$
+      responses:
+        '200':
+          description: Public terms and status as of this read. HEAD is also supported without a body.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicCoupon'
+        '404':
+          description: Malformed, non-v4, absent UUID or short number; same response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     sessionCookie:
@@ -1008,6 +1048,76 @@ components:
         type: string
       description: Exact allowlisted browser origin, including scheme and port. Missing or null origins are rejected for writes.
   schemas:
+    PublicCoupon:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - discount_type
+      - value
+      - restrictions
+      - total_limit
+      - per_client_limit
+      - first_visit_only
+      - expires_on
+      - expires_at
+      - status
+      properties:
+        code:
+          type: string
+          readOnly: true
+          description: Server-generated six-digit number; private search only. Not globally unique.
+          pattern: ^[0-9]{6}$
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+          description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma
+            or period input; dot with two digits in responses.'
+        restrictions:
+          type: string
+          maxLength: 2000
+          description: Optional plain text; line breaks are preserved and never silently truncated.
+        total_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+        per_client_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          description: Public coupon condition only; an anonymous viewer has no personal eligibility result.
+        first_visit_only:
+          type: boolean
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          description: Last valid date inclusive at fixed Moscow UTC+03:00. Expiry is next day 00:00 UTC+03:00, exclusive.
+            Past dates are permitted and immediately show expired.
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        status:
+          type: string
+          enum:
+          - available
+          - expired
+          - exhausted
+          - revoked
+          description: 'Precedence: revoked, expired, exhausted, available. This is global state, not client-specific
+            eligibility.'
     User:
       type: object
       additionalProperties: false
