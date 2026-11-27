@@ -12,8 +12,11 @@ type Pinger interface {
 }
 
 // The auth handler owns the session endpoints; health remains public.
-func NewHandler(db Pinger, auth http.Handler, clients http.Handler, coupons http.Handler, redemptions http.Handler) http.Handler {
+func NewHandler(db Pinger, auth http.Handler, clients http.Handler, coupons http.Handler, redemptions http.Handler, publicCoupons http.Handler) http.Handler {
 	mux := http.NewServeMux()
+	if publicCoupons != nil {
+		mux.Handle("/api/public/coupons/", publicCoupons)
+	}
 	if auth != nil {
 		mux.Handle("/api/auth/", auth)
 	}

@@ -489,6 +489,10 @@ onBeforeUnmount(() => {
               maxlength="2000"
               rows="4"
             />
+            <p class="field-help">
+              Этот текст виден по публичной ссылке. Не указывайте в нем данные
+              клиентов.
+            </p>
             <details class="coupon-referrer">
               <summary>Кому выдан (необязательно)</summary>
               <p class="field-help">
@@ -574,6 +578,15 @@ onBeforeUnmount(() => {
             <h4>Ограничения по услугам</h4>
             <p>{{ selected.restrictions }}</p>
           </section>
+          <div class="coupon-share">
+            <a :href="`/c/${selected.id}`" target="_blank" rel="noreferrer"
+              >Открыть карточку для клиента</a
+            >
+            <p class="field-help">
+              Ссылка, QR, изображение и печать. Данные клиентов и история
+              остаются в кабинете.
+            </p>
+          </div>
           <CouponUseForm
             :key="selected.id"
             :coupon="selected"
