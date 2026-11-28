@@ -1674,3 +1674,44 @@ textarea {
 .public-secondary-actions button {
   flex: 1 1 180px;
 }
+
+.template-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+.template-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.template-list h3 {
+  margin: 0 0 0.5rem;
+}
+.template-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 14rem) auto;
+  align-items: end;
+  gap: 12px;
+}
+.template-search > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.template-search input,
+.template-search select {
+  margin-bottom: 0;
+}
+@media (max-width: 720px) {
+  .template-search {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .template-search > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+.coupon-term-fields {
+  display: contents;
+}

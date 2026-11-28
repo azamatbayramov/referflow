@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import CouponTermsFields from './CouponTermsFields.vue'
+import { copyTerms, emptyTerms, type CouponTerms } from '../coupon-terms'
 import CouponUseForm from './CouponUseForm.vue'
 import CouponShare from './CouponShare.vue'
 import RedemptionHistory from './RedemptionHistory.vue'
 
-type Input = {
-  discount_type: 'percent' | 'fixed'
-  value: string
-  restrictions: string
-  total_limit: number | null
-  per_client_limit: number | null
-  first_visit_only: boolean
-  expires_on: string | null
-  referrer_client_id: string | null
-}
+type Input = CouponTerms & { referrer_client_id: string | null }
 type Coupon = Input & {
   id: string
   code: string
@@ -40,7 +33,7 @@ const props = defineProps<{
   initialUsage?: 'all' | 'used' | 'unused'
 }>()
 const usage = ref(props.initialUsage ?? 'all')
-const emit = defineEmits<{ expired: [] }>()
+const emit = defineEmits<{ expired: []; templates: [] }>()
 const items = ref<Coupon[]>([]),
   selected = ref<Coupon | null>(null),
   events = ref<Event[]>([])
@@ -65,10 +58,7 @@ const form = ref(false),
   notice = ref(''),
   reason = ref(''),
   confirmRevoke = ref(false)
-const draft = ref<Input>(empty()),
-  unlimitedTotal = ref(true),
-  unlimitedPersonal = ref(false),
-  timed = ref(false)
+const draft = ref<Input>(empty())
 const clientQuery = ref(''),
   clients = ref<Client[]>([]),
   clientLoading = ref(false)
@@ -86,16 +76,7 @@ const labels: Record<string, string> = {
   exhausted: 'Исчерпан лимит',
 }
 function empty(): Input {
-  return {
-    discount_type: 'percent',
-    value: '10',
-    restrictions: '',
-    total_limit: null,
-    per_client_limit: 1,
-    first_visit_only: false,
-    expires_on: null,
-    referrer_client_id: null,
-  }
+  return { ...emptyTerms(), referrer_client_id: null }
 }
 async function api(
   path: string,
@@ -177,16 +158,16 @@ async function focusEditor() {
   editorTitle.value?.focus({ preventScroll: true })
   editor.value?.scrollIntoView({ block: 'start' })
 }
-async function create() {
+async function create(terms?: CouponTerms) {
   if (busy.value || frozen.value || usePending.value || historyPending.value)
     return
   listScroll = window.scrollY
   clientController?.abort()
   clientLoading.value = false
-  draft.value = empty()
-  unlimitedTotal.value = true
-  unlimitedPersonal.value = false
-  timed.value = false
+  draft.value = {
+    ...(terms ? copyTerms(terms) : emptyTerms()),
+    referrer_client_id: null,
+  }
   frozen.value = null
   key = crypto.randomUUID()
   selected.value = null
@@ -196,6 +177,7 @@ async function create() {
   clients.value = []
   clientQuery.value = ''
   await focusEditor()
+  return true
 }
 async function open(c: Coupon) {
   if (
@@ -256,16 +238,7 @@ async function save() {
   error.value = ''
   notice.value = ''
   try {
-    frozen.value ??= {
-      ...draft.value,
-      total_limit: unlimitedTotal.value
-        ? null
-        : Number(draft.value.total_limit),
-      per_client_limit: unlimitedPersonal.value
-        ? null
-        : Number(draft.value.per_client_limit),
-      expires_on: timed.value ? draft.value.expires_on : null,
-    }
+    frozen.value ??= { ...draft.value }
     const c = await api('/coupons', frozen.value)
     if (!alive) return
     form.value = false
@@ -353,7 +326,7 @@ async function showList(nextUsage: 'all' | 'used' | 'unused') {
   query.value = ''
   await load()
 }
-defineExpose({ showList })
+defineExpose({ showList, create, focusEditor })
 function findCoupon() {
   searchInput.value?.focus()
   searchInput.value?.scrollIntoView({ block: 'center' })
@@ -389,7 +362,7 @@ onBeforeUnmount(() => {
             class="primary"
             type="button"
             :disabled="busy"
-            @click="create"
+            @click="create()"
           >
             Выдать купон <span aria-hidden="true">+</span>
           </button>
@@ -502,92 +475,10 @@ onBeforeUnmount(() => {
               Номер присвоится автоматически. По умолчанию — один раз на
               клиента.
             </p>
-            <h4 class="form-group-title">Скидка</h4>
-            <label for="discount-type">Вид скидки</label
-            ><select id="discount-type" v-model="draft.discount_type">
-              <option value="percent">Процент</option>
-              <option value="fixed">Фиксированная сумма, ₽</option>
-            </select>
-            <label for="discount-value">{{
-              draft.discount_type === 'percent' ? 'Скидка, %' : 'Скидка, ₽'
-            }}</label><input
-              id="discount-value"
-              v-model="draft.value"
-              inputmode="decimal"
-              required
-              maxlength="14"
-            />
-            <p class="field-help">
-              {{
-                draft.discount_type === 'percent'
-                  ? 'От 0,01 до 100 %.'
-                  : 'От 0,01 ₽.'
-              }}
-              Не больше двух знаков после запятой.
-            </p>
-            <h4 class="form-group-title">Условия использования</h4>
-            <label for="total-mode">Общий лимит</label
-            ><select id="total-mode" v-model="unlimitedTotal">
-              <option :value="true">Без ограничения</option>
-              <option :value="false">Указать количество</option></select
-            ><template v-if="!unlimitedTotal"
-              ><label for="total-limit">Всего использований</label
-              ><input
-                id="total-limit"
-                v-model="draft.total_limit"
-                type="number"
-                min="1"
-                max="2147483647"
-                step="1"
-                required
-            /></template>
-            <label for="personal-mode">На одного клиента</label
-            ><select id="personal-mode" v-model="unlimitedPersonal">
-              <option :value="false">Указать количество</option>
-              <option :value="true">Без ограничения</option></select
-            ><template v-if="!unlimitedPersonal"
-              ><label for="personal-limit">Использований на клиента</label
-              ><input
-                id="personal-limit"
-                v-model="draft.per_client_limit"
-                type="number"
-                min="1"
-                max="2147483647"
-                step="1"
-                required
-            /></template>
-            <label class="check-label"
-              ><input v-model="draft.first_visit_only" type="checkbox" />Только
-              первое посещение специалиста</label
-            >
-            <label class="check-label"
-              ><input v-model="timed" type="checkbox" />Указать срок
-              действия</label
-            ><template v-if="timed"
-              ><label for="coupon-expiry">Последний день действия</label
-              ><input
-                id="coupon-expiry"
-                v-model="draft.expires_on"
-                type="date"
-                required
-              />
-              <p class="field-help">
-                До конца этого дня по Москве (UTC+3). Прошедшая дата создаст уже
-                истекший купон.
-              </p></template
-            >
-            <label for="coupon-restrictions"
-              >Ограничения по услугам (необязательно)</label
-            ><textarea
-              id="coupon-restrictions"
-              v-model="draft.restrictions"
-              maxlength="2000"
-              rows="4"
-            />
-            <p class="field-help">
-              Этот текст виден по публичной ссылке. Не указывайте в нем данные
-              клиентов.
-            </p>
+            <button class="secondary" type="button" @click="emit('templates')">
+              Заполнить из шаблона
+            </button>
+            <CouponTermsFields v-model="draft" prefix="issue" />
             <details class="coupon-referrer">
               <summary>Кто передаст купон (необязательно)</summary>
               <p class="field-help">

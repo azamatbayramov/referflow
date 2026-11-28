@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import CouponTemplatesPanel from './components/CouponTemplatesPanel.vue'
+import type { CouponTerms } from './coupon-terms'
 import ClientsPanel from './components/ClientsPanel.vue'
 import CouponsPanel from './components/CouponsPanel.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
@@ -9,12 +11,26 @@ type Session = {
   expires_at: string
   csrf_token: string
 }
-const section = ref<'clients' | 'coupons' | 'statistics'>('coupons')
+const section = ref<'clients' | 'coupons' | 'statistics' | 'templates'>(
+  'coupons',
+)
 const couponsPanel = ref<InstanceType<typeof CouponsPanel> | null>(null)
 async function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
   section.value = 'coupons'
   await nextTick()
   couponsPanel.value?.showList(usage)
+}
+async function issueTemplate(
+  terms: CouponTerms,
+  complete: (opened: boolean) => void,
+) {
+  const opened = await couponsPanel.value?.create(terms)
+  if (opened) {
+    section.value = 'coupons'
+    await nextTick()
+    await couponsPanel.value?.focusEditor()
+  }
+  complete(Boolean(opened))
 }
 function home(event: MouseEvent) {
   if (session.value) {
@@ -170,6 +186,13 @@ onBeforeUnmount(() => {
         >
           Статистика
         </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'templates'"
+          @click="section = 'templates'"
+        >
+          Шаблоны
+        </button>
       </nav>
       <details v-if="session" class="account-menu">
         <summary>
@@ -250,6 +273,15 @@ onBeforeUnmount(() => {
         ref="couponsPanel"
         :key="session.user.id"
         :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+        @templates="section = 'templates'"
+      />
+      <CouponTemplatesPanel
+        v-show="section === 'templates'"
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        :active="section === 'templates'"
+        @issue="issueTemplate"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />
       <ClientsPanel

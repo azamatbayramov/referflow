@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Referflow API
-  version: 0.7.0
-  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public read-only QR cards and own pilot statistics are available.
+  version: 0.8.0
+  description: Specialist sessions, client cards, coupons and audited uses/cancellations. Public read-only QR cards, own pilot statistics and private reusable coupon templates are available.
 servers:
   - url: /
 paths:
@@ -397,12 +397,239 @@ paths:
         '503': *id009
         '404': *id010
         '409': *id011
+  /api/coupons/templates:
+    post:
+      operationId: createCouponTemplate
+      summary: Save reusable coupon defaults
+      description: Owner comes only from the session; responses are no-store. Unknown fields and URL query parameters are
+        rejected. Template changes never update or revoke issued coupons. UUID replay key is permanent and owner-scoped
+        across create/update. Same normalized request returns the template in its current state (200), including later
+        edits/archive. First creation is 201. No coupon, public card, client binding or counter is created.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponTemplateCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponTemplate'
+        '200':
+          description: Replayed current template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Stale version or committed idempotency key reused with different data/target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/coupons/templates/search:
+    post:
+      operationId: searchCouponTemplates
+      summary: Find own templates by name and archive state
+      description: Owner comes only from the session; responses are no-store. Unknown fields and URL query parameters are
+        rejected. Template changes never update or revoke issued coupons. Shared 120/minute lookup budget with coupon search/details/statistics.
+        Newest first, stable ID tiebreaker; 50 per page.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponTemplateSearch'
+      responses:
+        '200':
+          description: Page of own templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponTemplatePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          description: 'Shared coupon lookup budget exhausted (120/minute per specialist); Retry-After: 60.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/coupons/templates/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getCouponTemplate
+      summary: Read current own template
+      description: Owner comes only from the session; responses are no-store. Unknown fields and URL query parameters are
+        rejected. Template changes never update or revoke issued coupons. Shared lookup budget. The UI rechecks archive
+        state before copying defaults into an editable issuance form; issuance remains POST /api/coupons with explicit
+        copied terms and its own new replay key.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Current template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          description: Template not found or belongs to another specialist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '429':
+          description: 'Shared coupon lookup budget exhausted (120/minute per specialist); Retry-After: 60.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    put:
+      operationId: updateCouponTemplate
+      summary: Edit, archive or restore an own template
+      description: Owner comes only from the session; responses are no-store. Unknown fields and URL query parameters are
+        rejected. Template changes never update or revoke issued coupons. Full replacement of name/terms/archive state
+        with expected current version. A new successful operation increments version once. Same key/body/target returns
+        current state without repeating the edit; stale new operation is 409. Archiving prevents selection in the UI; already
+        copied drafts and issued coupons remain independent.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponTemplateUpdate'
+      responses:
+        '200':
+          description: Saved or replayed current template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '404':
+          description: Template not found or belongs to another specialist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          description: Stale version or committed idempotency key reused with different data/target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /api/coupons:
     post:
       operationId: createCoupon
       summary: Issue a standalone coupon with immutable terms
-      description: Owner comes only from the session. UUIDv4 identifies the coupon and will back a future public QR page; no
-        public endpoint is implemented in this phase. Replay returns the same coupon in its current state and cannot revive
+      description: Owner comes only from the session. UUIDv4 identifies the coupon and its read-only public QR page. Terms copied
+        from a template become independent, immutable coupon terms. Replay returns the same coupon in its current state and cannot revive
         it. Issuance and its event commit atomically.
       security:
       - sessionCookie: []
@@ -1085,6 +1312,244 @@ components:
         type: string
       description: Exact allowlisted browser origin, including scheme and port. Missing or null origins are rejected for writes.
   schemas:
+    CouponTemplateCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - discount_type
+      - value
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Private template name, trimmed; no control/format characters. Duplicate names are allowed.
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+          description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma or
+            period input; dot with two digits in responses.'
+        restrictions:
+          type: string
+          maxLength: 2000
+          default: ''
+          description: Optional plain text; line breaks are preserved and never silently truncated.
+        total_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          default: null
+        per_client_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          default: 1
+          description: Omitted defaults to 1. Explicit null means unlimited, independently of total_limit.
+        first_visit_only:
+          type: boolean
+          default: false
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          default: null
+          description: Absolute last valid calendar day in Moscow, inclusive; copied unchanged into each coupon. Null means
+            perpetual. Not a duration from issuance.
+        archived:
+          type: boolean
+          default: false
+          const: false
+        version:
+          type: integer
+          minimum: 0
+          maximum: 2147483646
+          default: 0
+          const: 0
+    CouponTemplateUpdate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - discount_type
+      - value
+      - version
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Private template name, trimmed; no control/format characters. Duplicate names are allowed.
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+          description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma or
+            period input; dot with two digits in responses.'
+        restrictions:
+          type: string
+          maxLength: 2000
+          default: ''
+          description: Optional plain text; line breaks are preserved and never silently truncated.
+        total_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          default: null
+        per_client_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          default: 1
+          description: Omitted defaults to 1. Explicit null means unlimited, independently of total_limit.
+        first_visit_only:
+          type: boolean
+          default: false
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          default: null
+          description: Absolute last valid calendar day in Moscow, inclusive; copied unchanged into each coupon. Null means
+            perpetual. Not a duration from issuance.
+        archived:
+          type: boolean
+          default: false
+        version:
+          type: integer
+          minimum: 1
+          maximum: 2147483646
+    CouponTemplate:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - discount_type
+      - value
+      - restrictions
+      - total_limit
+      - per_client_limit
+      - first_visit_only
+      - expires_on
+      - archived
+      - version
+      - id
+      - created_at
+      - updated_at
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Private template name, trimmed; no control/format characters. Duplicate names are allowed.
+        discount_type:
+          type: string
+          enum:
+          - percent
+          - fixed
+        value:
+          type: string
+          pattern: ^[0-9]{1,10}([.,][0-9]{1,2})?$
+          description: 'Exact decimal, no floats/exponents. Percent: 0.01–100.00; fixed RUB: 0.01–9999999999.99. Comma or
+            period input; dot with two digits in responses.'
+        restrictions:
+          type: string
+          maxLength: 2000
+          description: Optional plain text; line breaks are preserved and never silently truncated.
+        total_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+        per_client_limit:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 2147483647
+          description: Omitted defaults to 1. Explicit null means unlimited, independently of total_limit.
+        first_visit_only:
+          type: boolean
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          description: Absolute last valid calendar day in Moscow, inclusive; copied unchanged into each coupon. Null means
+            perpetual. Not a duration from issuance.
+        archived:
+          type: boolean
+        version:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    CouponTemplateSearch:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          maxLength: 120
+          default: ''
+          description: Name substring; case-insensitive, е and ё are equivalent. No wildcard syntax.
+        state:
+          type: string
+          enum:
+          - active
+          - archived
+          - all
+          default: active
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          default: 0
+    CouponTemplatePage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - has_more
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/CouponTemplate'
+        has_more:
+          type: boolean
     CouponStatistics:
       type: object
       additionalProperties: false
