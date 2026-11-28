@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import {
   couponLink,
   couponQR,
@@ -14,6 +14,31 @@ const notice = ref(''),
   error = ref(''),
   exporting = ref(false),
   fallback = ref(false)
+const canShare = ref(false),
+  sharing = ref(false)
+onMounted(() => {
+  canShare.value = typeof navigator.share === 'function'
+})
+async function share() {
+  if (sharing.value) return
+  sharing.value = true
+  notice.value = error.value = ''
+  try {
+    await navigator.share({ title: 'Купон Referflow', url: link.value })
+    notice.value = 'Ссылка передана в выбранное приложение.'
+  } catch (e) {
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      error.value =
+        'Не удалось открыть меню отправки. Скопируйте ссылку или отправьте ее вручную.'
+      fallback.value = true
+      await nextTick()
+      linkInput.value?.focus()
+      linkInput.value?.select()
+    }
+  } finally {
+    sharing.value = false
+  }
+}
 const linkInput = ref<HTMLInputElement | null>(null)
 async function copy() {
   notice.value = ''
@@ -75,7 +100,20 @@ async function download() {
       <h3>Купон готов к передаче</h3>
       <p class="muted">Клиенту не нужны регистрация и приложение.</p>
       <div class="share-actions">
-        <button class="primary" type="button" @click="copy">
+        <button
+          v-if="canShare"
+          class="primary"
+          type="button"
+          :disabled="sharing"
+          @click="share"
+        >
+          Отправить купон
+        </button>
+        <button
+          :class="canShare ? 'secondary' : 'primary'"
+          type="button"
+          @click="copy"
+        >
           Скопировать ссылку</button
         ><button
           class="secondary"

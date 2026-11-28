@@ -36,6 +36,7 @@ const timed = computed({
       :id="`${prefix}-discount-value`"
       v-model="terms.value"
       inputmode="decimal"
+      enterkeyhint="next"
       required
       maxlength="14"
     />
@@ -56,6 +57,7 @@ const timed = computed({
         :id="`${prefix}-total-limit`"
         v-model="terms.total_limit"
         type="number"
+        inputmode="numeric"
         min="1"
         max="2147483647"
         step="1"
@@ -71,6 +73,7 @@ const timed = computed({
         :id="`${prefix}-personal-limit`"
         v-model="terms.per_client_limit"
         type="number"
+        inputmode="numeric"
         min="1"
         max="2147483647"
         step="1"

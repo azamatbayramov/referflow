@@ -375,6 +375,8 @@ onBeforeUnmount(() => {
           ref="searchInput"
           v-model="query"
           inputmode="numeric"
+          enterkeyhint="search"
+          autocomplete="off"
           maxlength="20"
           placeholder="Номер купона"
         /><button class="primary" :disabled="loading">Найти</button>
