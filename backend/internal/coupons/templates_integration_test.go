@@ -122,8 +122,8 @@ func TestPostgresTemplateLifecycleIsolationAndSnapshot(t *testing.T) {
 		t.Fatal("changed replay accepted", err)
 	}
 	// Issuance uses a copied set of terms. Each copy receives fresh identity,
-	// limits and public UUID; no template/client metadata is persisted in it.
-	in := Input{DiscountType: template.DiscountType, Value: template.Value, Restrictions: template.Restrictions, TotalLimit: template.TotalLimit, PerClientLimit: template.PerClientLimit, FirstVisitOnly: template.FirstVisitOnly, ExpiresOn: template.ExpiresOn}
+	// limits and public UUID. The source is retained privately.
+	in := Input{DiscountType: template.DiscountType, Value: template.Value, Restrictions: template.Restrictions, TotalLimit: template.TotalLimit, PerClientLimit: template.PerClientLimit, FirstVisitOnly: template.FirstVisitOnly, ExpiresOn: template.ExpiresOn, TemplateID: &template.ID}
 	issueKey, _ := newUUID()
 	coupon, _, err := store.Create(ctx, a, issueKey, in)
 	if err != nil {
@@ -137,14 +137,33 @@ func TestPostgresTemplateLifecycleIsolationAndSnapshot(t *testing.T) {
 	update := template.TemplateInput
 	update.DiscountType, update.Value, update.Archived = "fixed", "250,25", true
 	updateKey, _ := newUUID()
+	if w := call("PUT", url, update, token, csrf, updateKey); w.Code != 400 {
+		t.Fatal("immutable terms accepted", w.Code)
+	}
+	update = template.TemplateInput
+	update.Archived = true
 	w := call("PUT", url, update, token, csrf, updateKey)
 	if w.Code != 200 {
 		t.Fatal("edit", w.Code, w.Body.String())
 	}
 	var edited Template
 	_ = json.Unmarshal(w.Body.Bytes(), &edited)
-	if edited.Version != 2 || !edited.Archived || edited.Value != "250.25" {
-		t.Fatal("archive/edit", edited)
+	if edited.Version != 2 || !edited.Archived || edited.Value != "12.50" {
+		t.Fatal("archive changed terms", edited)
+	}
+	if _, replay, err := store.Create(ctx, a, issueKey, in); err != nil || !replay {
+		t.Fatal("issuance replay after archive", err)
+	}
+	freshKey, _ := newUUID()
+	if _, _, err := store.Create(ctx, a, freshKey, in); err != ErrInvalid {
+		t.Fatal("issuance from archive", err)
+	}
+	if _, _, err := store.Create(ctx, b, freshKey, in); err != ErrInvalid {
+		t.Fatal("issuance from foreign template", err)
+	}
+	source, err := store.Search(ctx, a, Search{TemplateID: template.ID})
+	if err != nil || len(source.Items) != 2 || source.Items[0].TemplateID == nil || *source.Items[0].TemplateID != template.ID {
+		t.Fatal("template source missing", source, err)
 	}
 	if w := call("PUT", url, update, token, csrf, updateKey); w.Code != 200 {
 		t.Fatal("lost edit response replay", w.Code)
@@ -188,17 +207,34 @@ func TestPostgresTemplateLifecycleIsolationAndSnapshot(t *testing.T) {
 	if page, err := store.SearchTemplates(ctx, a, TemplateSearch{State: "archived"}); err != nil || len(page.Items) != 1 {
 		t.Fatal("archive missing", err)
 	}
-	// Restore with unlimited caps, then reject another edit from that old version.
+	// Restoring changes only visibility, not the saved conditions.
 	restore := edited.TemplateInput
-	restore.Archived, restore.TotalLimit, restore.PerClientLimit, restore.ExpiresOn = false, nil, nil, nil
+	restore.Archived = false
 	restoreKey, _ := newUUID()
 	restored, _, err := store.SaveTemplate(ctx, a, template.ID, restoreKey, restore)
-	if err != nil || restored.Archived || restored.Version != 3 || restored.PerClientLimit != nil || restored.ExpiresOn != nil {
-		t.Fatal("restore/unlimited", restored, err)
+	if err != nil || restored.Archived || restored.Version != 3 || restored.PerClientLimit == nil || restored.ExpiresOn == nil {
+		t.Fatal("restore changed conditions", restored, err)
 	}
 	retry, replayedUpdate, err := store.SaveTemplate(ctx, a, template.ID, updateKey, update)
 	if err != nil || !replayedUpdate || retry.Version != 3 || retry.Archived {
 		t.Fatal("old edit replay overwrote newer state", retry, err)
+	}
+	// A newer unused template must not displace an older frequently issued one.
+	newKey, _ := newUUID()
+	newer, _, err := store.SaveTemplate(ctx, a, "", newKey, TemplateInput{Name: "Новый", DiscountType: "fixed", Value: "50"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	standalone := redemptionCoupon(t, store, a, baseInput())
+	in.TemplateID = &newer.ID
+	fromNewer := redemptionCoupon(t, store, a, in)
+	popular, err := store.SearchTemplates(ctx, a, TemplateSearch{Sort: "popular"})
+	if err != nil || len(popular.Items) != 2 || popular.Items[0].ID != template.ID || popular.Items[1].ID != newer.ID {
+		t.Fatal("popular order", popular, err)
+	}
+	filtered, err := store.Search(ctx, a, Search{TemplateID: template.ID})
+	if err != nil || len(filtered.Items) != 2 || filtered.Items[0].ID != second.ID || filtered.Items[1].ID != coupon.ID {
+		t.Fatal("source filter included other coupons", standalone.ID, fromNewer.ID, filtered, err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO coupon_lookup_limits(specialist_id,attempts,resets_at) VALUES($1,120,now()+interval '1 minute') ON CONFLICT(specialist_id) DO UPDATE SET attempts=120,resets_at=now()+interval '1 minute'`, a); err != nil {
 		t.Fatal(err)
@@ -224,12 +260,12 @@ func TestPostgresTemplateConcurrentEditsAndPagination(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
-	for _, name := range []string{"Изменение А", "Изменение Б"} {
+	for range 2 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			in := template.TemplateInput
-			in.Name = name
+			in.Archived = true
 			key, _ := newUUID()
 			_, _, err := store.SaveTemplate(ctx, a, template.ID, key, in)
 			errs <- err
@@ -256,11 +292,11 @@ func TestPostgresTemplateConcurrentEditsAndPagination(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	first, err := store.SearchTemplates(ctx, a, TemplateSearch{})
+	first, err := store.SearchTemplates(ctx, a, TemplateSearch{State: "all"})
 	if err != nil || len(first.Items) != 50 || !first.HasMore {
 		t.Fatal("first page", err)
 	}
-	last, err := store.SearchTemplates(ctx, a, TemplateSearch{Offset: 50})
+	last, err := store.SearchTemplates(ctx, a, TemplateSearch{State: "all", Offset: 50})
 	if err != nil || len(last.Items) != 1 || last.HasMore {
 		t.Fatal("last page", err)
 	}

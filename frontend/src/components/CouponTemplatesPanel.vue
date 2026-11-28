@@ -5,12 +5,14 @@ import {
   copyTerms,
   emptyTerms,
   type CouponTerms,
+  type IssuanceTerms,
   type CouponTemplate,
 } from '../coupon-terms'
 const props = defineProps<{ csrfToken: string; active: boolean }>()
 const emit = defineEmits<{
   expired: []
-  issue: [terms: CouponTerms, complete: (opened: boolean) => void]
+  issue: [terms: IssuanceTerms, complete: (opened: boolean) => void]
+  coupons: [templateId: string, complete: (opened: boolean) => void]
 }>()
 type Draft = CouponTerms & { name: string; version: number; archived: boolean }
 class ApiError extends Error {
@@ -23,7 +25,7 @@ class ApiError extends Error {
 }
 const items = ref<CouponTemplate[]>([])
 const query = ref(''),
-  state = ref('active'),
+  showArchived = ref(false),
   offset = ref(0),
   hasMore = ref(false)
 const loading = ref(false),
@@ -43,6 +45,8 @@ const frozen = ref<{
 const title = ref<HTMLElement | null>(null)
 let alive = true
 let listController: AbortController | undefined
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+const menu = ref('')
 function empty(): Draft {
   return { ...emptyTerms(), name: '', version: 0, archived: false }
 }
@@ -80,7 +84,7 @@ async function api(
       response.status === 400
         ? 'Проверьте название, скидку, лимиты и срок.'
         : response.status === 409
-          ? 'Шаблон изменился в другой вкладке. Загрузите актуальную версию перед редактированием.'
+          ? 'Статус шаблона изменился в другой вкладке. Загрузите актуальную версию.'
           : response.status === 404
             ? 'Шаблон недоступен. Обновите список.'
             : response.status === 429
@@ -107,7 +111,11 @@ async function load(reset = true) {
     const page = await api(
       '/search',
       'POST',
-      { query: query.value, state: state.value, offset: next },
+      {
+        query: query.value,
+        state: showArchived.value ? 'all' : 'active',
+        offset: next,
+      },
       undefined,
       controller.signal,
     )
@@ -122,6 +130,7 @@ async function load(reset = true) {
   }
 }
 async function search() {
+  clearTimeout(searchTimer)
   error.value = ''
   await load()
 }
@@ -148,6 +157,8 @@ async function open(id: string) {
     if (!alive) return
     selected.value = t
     draft.value = fill(t)
+    draft.value.archived = !t.archived
+    menu.value = ''
     editing.value = true
     stale.value = false
     await focusTitle()
@@ -178,6 +189,7 @@ async function save() {
     frozen.value = null
     selected.value = t
     draft.value = fill(t)
+    draft.value.archived = !t.archived
     notice.value = 'Шаблон сохранен. Условия выданных купонов не изменились.'
     await load()
   } catch (e) {
@@ -210,7 +222,7 @@ async function issue(id: string) {
       await load()
       return
     }
-    emit('issue', copyTerms(t), (opened) => {
+    emit('issue', { ...copyTerms(t), template_id: t.id }, (opened) => {
       if (alive && !opened)
         error.value = 'Сначала завершите отправку в открытом купоне.'
     })
@@ -220,6 +232,18 @@ async function issue(id: string) {
     if (alive) busy.value = false
   }
 }
+function createdCoupons(id: string) {
+  menu.value = ''
+  emit('coupons', id, (opened) => {
+    if (alive && !opened)
+      error.value = 'Сначала завершите отправку в открытом купоне.'
+  })
+}
+watch([query, showArchived], () => {
+  clearTimeout(searchTimer)
+  listController?.abort()
+  searchTimer = setTimeout(() => void search(), 300)
+})
 watch(
   () => props.active,
   (active) => {
@@ -230,6 +254,7 @@ watch(
 onBeforeUnmount(() => {
   alive = false
   listController?.abort()
+  clearTimeout(searchTimer)
 })
 </script>
 <template>
@@ -255,15 +280,11 @@ onBeforeUnmount(() => {
           <label for="template-search">Название шаблона</label
           ><input id="template-search" v-model="query" maxlength="120" />
         </div>
-        <div>
-          <label for="template-state">Показать шаблоны</label
-          ><select id="template-state" v-model="state" @change="search">
-            <option value="active">Активные</option>
-            <option value="archived">В архиве</option>
-            <option value="all">Все</option>
-          </select>
-        </div>
-        <button class="secondary" :disabled="loading">Найти</button>
+        <label class="check-label"
+          ><input v-model="showArchived" type="checkbox" /><span
+            >Показывать архивированные</span
+          ></label
+        >
       </form>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-if="loading" role="status">Загружаем шаблоны…</p>
@@ -272,14 +293,68 @@ onBeforeUnmount(() => {
         <p>Создайте шаблон или измените поиск.</p>
       </div>
       <ul class="template-list">
-        <li v-for="t in items" :key="t.id" class="coupon-action-card">
-          <h3>{{ t.name }}</h3>
+        <li
+          v-for="t in items"
+          :key="t.id"
+          class="coupon-action-card template-card"
+        >
+          <div class="template-card-heading">
+            <h3>{{ t.name }}</h3>
+            <div class="template-menu">
+              <button
+                class="text-button"
+                type="button"
+                :aria-label="`Действия: ${t.name}`"
+                :aria-expanded="menu === t.id"
+                @click="menu = menu === t.id ? '' : t.id"
+              >
+                ⋯
+              </button>
+              <div
+                v-if="menu === t.id"
+                class="template-menu-actions"
+                @keydown.esc="menu = ''"
+              >
+                <button
+                  class="text-button"
+                  type="button"
+                  :disabled="busy"
+                  @click="open(t.id)"
+                >
+                  {{ t.archived ? 'Восстановить' : 'В архив' }}
+                </button>
+                <button
+                  class="text-button"
+                  type="button"
+                  @click="createdCoupons(t.id)"
+                >
+                  Созданные купоны
+                </button>
+              </div>
+            </div>
+          </div>
           <p>
             {{ t.value.replace(/\.00$/, '').replace('.', ',') }}
             {{ t.discount_type === 'percent' ? '%' : '₽' }} ·
             {{
               t.first_visit_only ? 'Только первое посещение' : 'Любые посещения'
             }}
+          </p>
+          <p>
+            {{
+              t.total_limit === null
+                ? 'Без общего лимита'
+                : `Всего использований: ${t.total_limit}`
+            }}
+            ·
+            {{
+              t.per_client_limit === null
+                ? 'Без лимита на клиента'
+                : `На клиента: ${t.per_client_limit}`
+            }}
+          </p>
+          <p class="template-restrictions">
+            {{ t.restrictions || 'Без ограничений по услугам' }}
           </p>
           <p class="muted">
             {{
@@ -297,14 +372,6 @@ onBeforeUnmount(() => {
               @click="issue(t.id)"
             >
               Выдать по шаблону
-            </button>
-            <button
-              class="secondary"
-              type="button"
-              :disabled="busy"
-              @click="open(t.id)"
-            >
-              Изменить
             </button>
           </div>
         </li>
@@ -329,7 +396,7 @@ onBeforeUnmount(() => {
         ← Назад к шаблонам
       </button>
       <h2 ref="title" tabindex="-1">
-        {{ selected ? 'Изменить шаблон' : 'Создать шаблон' }}
+        {{ selected ? selected.name : 'Создать шаблон' }}
       </h2>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-if="notice" class="success" role="status">{{ notice }}</p>
@@ -343,7 +410,15 @@ onBeforeUnmount(() => {
         Загрузить актуальную версию
       </button>
       <form class="coupon-create-card" :aria-busy="busy" @submit.prevent="save">
-        <fieldset class="coupon-fields" :disabled="busy || !!frozen || stale">
+        <p v-if="selected">
+          Условия шаблона неизменяемы. Архив скрывает его из выдачи, но не
+          меняет уже созданные купоны.
+        </p>
+        <fieldset
+          v-if="!selected"
+          class="coupon-fields"
+          :disabled="busy || !!frozen || stale"
+        >
           <label for="template-name">Название шаблона</label
           ><input
             id="template-name"
@@ -356,14 +431,6 @@ onBeforeUnmount(() => {
             одного купона.
           </p>
           <CouponTermsFields v-model="draft" prefix="template" />
-          <label v-if="selected" class="check-label"
-            ><input v-model="draft.archived" type="checkbox" />Убрать шаблон в
-            архив</label
-          >
-          <p v-if="selected" class="field-help">
-            Архив убирает шаблон из выдачи. Выданные купоны продолжают
-            действовать. Для восстановления снимите отметку и сохраните.
-          </p>
         </fieldset>
         <p v-if="frozen" class="field-help">
           Повтор сохранит те же данные один раз. После перезагрузки сначала
@@ -375,7 +442,11 @@ onBeforeUnmount(() => {
               ? 'Сохраняем…'
               : frozen
                 ? 'Повторить сохранение шаблона'
-                : 'Сохранить шаблон'
+                : selected
+                  ? draft.archived
+                    ? 'Отправить в архив'
+                    : 'Восстановить шаблон'
+                  : 'Сохранить шаблон'
           }}
         </button>
       </form>

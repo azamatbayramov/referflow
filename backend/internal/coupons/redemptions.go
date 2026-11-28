@@ -57,6 +57,32 @@ type RedemptionPage struct {
 	HasMore bool         `json:"has_more"`
 }
 
+type Eligibility struct {
+	Status string `json:"status"`
+}
+
+// Eligibility is a read-only preview. Redeem rechecks all limits under locks.
+func (s Store) Eligibility(ctx context.Context, owner, couponID, clientID string) (Eligibility, error) {
+	if !validUUID(couponID) || !validUUID(clientID) {
+		return Eligibility{}, ErrInvalid
+	}
+	var out Eligibility
+	err := s.Pool.QueryRow(ctx, `SELECT CASE
+ WHEN p.archived THEN 'archived_client'
+ WHEN c.revoked_at IS NOT NULL THEN 'revoked'
+ WHEN c.expires_at IS NOT NULL AND c.expires_at<=clock_timestamp() THEN 'expired'
+ WHEN c.total_limit IS NOT NULL AND c.used_count>=c.total_limit THEN 'total_limit'
+ WHEN c.per_client_limit IS NOT NULL AND
+ (SELECT count(*) FROM coupon_redemptions u WHERE u.specialist_id=c.specialist_id AND u.coupon_id=c.id AND u.client_id=p.id AND u.canceled_at IS NULL)>=c.per_client_limit THEN 'personal_limit'
+ ELSE 'eligible' END
+ FROM coupons c JOIN clients p ON p.specialist_id=c.specialist_id AND p.id=$3
+ WHERE c.specialist_id=$1 AND c.id=$2`, owner, couponID, clientID).Scan(&out.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return out, err
+}
+
 const redemptionSelection = `SELECT u.id::text,u.coupon_id::text,c.code,u.client_id::text,p.name,u.specialist_id::text,a.name,u.discount_type,u.value_minor,
  u.single_coupon_confirmed,u.first_visit_confirmed,u.first_visit_required,u.confirmed_at,u.canceled_at,u.canceled_by::text,x.name,u.cancel_reason
  FROM coupon_redemptions u JOIN coupons c ON c.id=u.coupon_id AND c.specialist_id=u.specialist_id

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,6 +37,7 @@ type TemplateSearch struct {
 	Query  string `json:"query"`
 	State  string `json:"state"`
 	Offset int    `json:"offset"`
+	Sort   string `json:"sort"`
 }
 type TemplatePage struct {
 	Items   []Template `json:"items"`
@@ -65,8 +67,8 @@ func scanTemplate(row pgx.Row) (Template, error) {
 	return t, err
 }
 
-// SaveTemplate atomically records an edit and its permanent replay key. The
-// expected version prevents overwriting changes from another tab or API replica.
+// SaveTemplate creates immutable terms or changes only their archive state.
+// The permanent replay key is checked before the current archive version.
 func (s Store) SaveTemplate(ctx context.Context, owner, id, key string, in TemplateInput) (Template, bool, error) {
 	creating := id == ""
 	if !creating && !validUUID(id) {
@@ -122,7 +124,12 @@ func (s Store) SaveTemplate(ctx context.Context, owner, id, key string, in Templ
 		if old.Version != in.Version {
 			return Template{}, false, ErrConflict
 		}
-		_, err = tx.Exec(ctx, `UPDATE coupon_templates SET name=$3,discount_type=$4,value_minor=$5,restrictions=$6,total_limit=$7,per_client_limit=$8,first_visit_only=$9,expires_on=$10,archived=$11,version=version+1,updated_at=clock_timestamp() WHERE specialist_id=$1 AND id=$2`, owner, id, in.Name, in.DiscountType, value, in.Restrictions, in.TotalLimit, in.PerClientLimit, in.FirstVisitOnly, in.ExpiresOn, in.Archived)
+		terms := old.TemplateInput
+		terms.Archived, terms.Version = in.Archived, in.Version
+		if !reflect.DeepEqual(terms, in) {
+			return Template{}, false, ErrInvalid
+		}
+		_, err = tx.Exec(ctx, `UPDATE coupon_templates SET archived=$3,version=version+1,updated_at=clock_timestamp() WHERE specialist_id=$1 AND id=$2`, owner, id, in.Archived)
 	}
 	if err != nil {
 		return Template{}, false, err
@@ -158,7 +165,10 @@ func (s Store) SearchTemplates(ctx context.Context, owner string, in TemplateSea
 	if in.State != "active" && in.State != "archived" && in.State != "all" {
 		return TemplatePage{}, ErrInvalid
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT `+templateColumns+` FROM coupon_templates WHERE specialist_id=$1 AND ($2='all' OR archived=($2='archived')) AND strpos(replace(lower(name),'ё','е'),$3)>0 ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.State, strings.ReplaceAll(strings.ToLower(in.Query), "ё", "е"), in.Offset)
+	if in.Sort != "" && in.Sort != "recent" && in.Sort != "popular" {
+		return TemplatePage{}, ErrInvalid
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT `+templateColumns+` FROM coupon_templates t WHERE specialist_id=$1 AND ($2='all' OR archived=($2='archived')) AND strpos(replace(lower(name),'ё','е'),$3)>0 ORDER BY CASE WHEN $5='popular' THEN (SELECT count(*) FROM coupons c WHERE c.specialist_id=t.specialist_id AND c.template_id=t.id) ELSE 0 END DESC,created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.State, strings.ReplaceAll(strings.ToLower(in.Query), "ё", "е"), in.Offset, in.Sort)
 	if err != nil {
 		return TemplatePage{}, err
 	}

@@ -513,6 +513,83 @@ paths:
                 const: 60
         '503':
           $ref: '#/components/responses/Unavailable'
+  /api/coupons/{id}/eligibility:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: checkCouponEligibility
+      summary: Preview coupon availability for an own client without consuming it
+      description: Read-only, no-store, shared coupon lookup budget. Checks archive state and general/personal limits. Does not verify a first visit or reserve a use. Redemption rechecks limits atomically and still requires manual confirmations.
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Origin'
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_id]
+              properties:
+                client_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Advisory availability at the time of the query
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [eligible, archived_client, revoked, expired, total_limit, personal_limit]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/CSRF'
+        '404':
+          description: Coupon or client absent or owned by another specialist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '413':
+          $ref: '#/components/responses/TooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          description: Shared coupon lookup budget exhausted.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                const: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /api/coupons/templates/{id}:
     parameters:
     - name: id
@@ -564,12 +641,12 @@ paths:
           $ref: '#/components/responses/Unavailable'
     put:
       operationId: updateCouponTemplate
-      summary: Edit, archive or restore an own template
+      summary: Archive or restore an immutable own template
       description: Owner comes only from the session; responses are no-store. Unknown fields and URL query parameters are
-        rejected. Template changes never update or revoke issued coupons. Full replacement of name/terms/archive state
-        with expected current version. A new successful operation increments version once. Same key/body/target returns
-        current state without repeating the edit; stale new operation is 409. Archiving prevents selection in the UI; already
-        copied drafts and issued coupons remain independent.
+        rejected. Send the unchanged name and conditions with the new archived flag and expected version.
+        Changing name or conditions returns 400. A successful operation increments version once.
+        Same key/body/target returns current state without repeating the operation; stale new operation is 409.
+        Archiving prevents new issuance from that source, including already copied drafts; issued coupons remain independent.
       security:
       - sessionCookie: []
       parameters:
@@ -706,6 +783,11 @@ paths:
                   default: null
                   description: Optional own active client to whom the coupon was issued, not the discount recipient. Not an
                     eligibility restriction.
+                template_id:
+                  type: [string, 'null']
+                  format: uuid
+                  default: null
+                  description: Private provenance. Must identify an own active template at first issuance. Copied conditions may differ; replay succeeds even after archiving.
       responses:
         '201':
           description: Issued
@@ -773,6 +855,10 @@ paths:
                   enum: [all, used, unused]
                   default: all
                   description: Intersects code/state. Used means at least one non-canceled use; unused includes coupons whose uses were all canceled.
+                template_id:
+                  type: string
+                  default: ''
+                  description: Optional source template UUID; intersects all other filters, including archived sources.
                 code:
                   type: string
                   maxLength: 20
@@ -1378,6 +1464,7 @@ components:
           const: 0
     CouponTemplateUpdate:
       type: object
+      description: Only archived may change; name and conditions must match the saved normalized values. Version is the expected current version.
       additionalProperties: false
       required:
       - name
@@ -1519,6 +1606,11 @@ components:
       type: object
       additionalProperties: false
       properties:
+        sort:
+          type: string
+          enum: [recent, popular]
+          default: recent
+          description: Popular sorts by the number of own issued coupons retaining this source; ties and recent sort by created_at DESC, id DESC.
         query:
           type: string
           maxLength: 120
@@ -1766,6 +1858,7 @@ components:
       - first_visit_only
       - expires_on
       - referrer_client_id
+      - template_id
       - id
       - used_count
       - status
@@ -1823,6 +1916,10 @@ components:
           format: uuid
           description: Optional own active client to whom the coupon was issued, not the discount recipient. Not an eligibility
             restriction.
+        template_id:
+          type: [string, 'null']
+          format: uuid
+          description: Private source template, retained after archiving. Null for standalone and legacy coupons; never exposed publicly.
         id:
           type: string
           format: uuid

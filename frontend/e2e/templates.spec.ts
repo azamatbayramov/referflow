@@ -27,7 +27,7 @@ async function setup(page: Page, context: BrowserContext, baseURL: string) {
   return { Origin: new URL(baseURL).origin, 'X-CSRF-Token': session.csrf_token }
 }
 const saved = 'Шаблон сохранен. Условия выданных купонов не изменились.'
-test('template terms are copied into independent coupons and survive template edit/archive', async ({
+test('immutable templates retain coupon sources and survive archiving', async ({
   page,
   context,
   baseURL,
@@ -114,18 +114,31 @@ test('template terms are copied into independent coupons and survive template ed
   for (const c of issued.items) {
     expect(c.used_count).toBe(0)
     expect(c.referrer_client_id).toBeNull()
+    expect(c.template_id).toBeTruthy()
   }
-  await page.getByRole('button', { name: 'Изменить', exact: true }).click()
-  await page.getByLabel('Вид скидки', { exact: true }).selectOption('fixed')
-  await page.getByLabel('Скидка, ₽', { exact: true }).fill('250,25')
+  await expect(
+    page
+      .getByRole('region', { name: 'Шаблоны купонов', exact: true })
+      .getByText('Условия полностью\nВторая строка', { exact: true }),
+  ).toBeVisible()
   await page
-    .getByLabel('На одного клиента', { exact: true })
-    .selectOption('true')
-  await page.getByLabel('Общий лимит', { exact: true }).selectOption('true')
-  await page.getByLabel('Указать срок действия', { exact: true }).uncheck()
-  await page.getByLabel('Убрать шаблон в архив', { exact: true }).check()
+    .getByRole('button', { name: 'Действия: Близким Тестовый', exact: true })
+    .click()
   await page
-    .getByRole('button', { name: 'Сохранить шаблон', exact: true })
+    .getByRole('button', { name: 'Созданные купоны', exact: true })
+    .click()
+  await expect(page.getByText('Купоны из выбранного шаблона')).toBeVisible()
+  await expect(page.locator('.coupon-list > li')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Шаблоны', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Действия: Близким Тестовый', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'В архив', exact: true }).click()
+  await expect(
+    page.getByLabel('Название шаблона', { exact: true }),
+  ).toHaveCount(0)
+  await page
+    .getByRole('button', { name: 'Отправить в архив', exact: true })
     .click()
   await expect(page.getByText(saved, { exact: true })).toBeVisible()
   await page
@@ -134,11 +147,9 @@ test('template terms are copied into independent coupons and survive template ed
   await expect(
     page.getByRole('heading', { name: 'Шаблоны не найдены', exact: true }),
   ).toBeVisible()
-  await page
-    .getByLabel('Показать шаблоны', { exact: true })
-    .selectOption('archived')
+  await page.getByLabel('Показывать архивированные', { exact: true }).check()
   await expect(
-    page.getByRole('button', { name: 'Изменить', exact: true }),
+    page.getByRole('heading', { name: 'Близким Тестовый', exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Выдать по шаблону', exact: true }),
@@ -153,39 +164,51 @@ test('template terms are copied into independent coupons and survive template ed
     ).json()
     expect(publicCard.value).toBe(c.value)
     expect(publicCard).not.toHaveProperty('name')
+    expect(publicCard).not.toHaveProperty('template_id')
     expect(JSON.stringify(publicCard)).not.toContain('Близким Тестовый')
   }
-  await page.getByRole('button', { name: 'Изменить', exact: true }).click()
-  await page.getByLabel('Убрать шаблон в архив', { exact: true }).uncheck()
   await page
-    .getByRole('button', { name: 'Сохранить шаблон', exact: true })
+    .getByRole('button', { name: 'Действия: Близким Тестовый', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'Восстановить', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Восстановить шаблон', exact: true })
     .click()
   await expect(page.getByText(saved, { exact: true })).toBeVisible()
   await page
     .getByRole('button', { name: '← Назад к шаблонам', exact: true })
     .click()
-  await page
-    .getByLabel('Показать шаблоны', { exact: true })
-    .selectOption('active')
+  await page.getByLabel('Показывать архивированные', { exact: true }).uncheck()
+  await page.getByLabel('Название шаблона', { exact: true }).fill('НЕ НАЙДЕНО')
+  await expect(
+    page.getByRole('heading', { name: 'Шаблоны не найдены', exact: true }),
+  ).toBeVisible()
+  await page.getByLabel('Название шаблона', { exact: true }).fill('близким')
   await page
     .getByRole('button', { name: 'Выдать по шаблону', exact: true })
     .click()
-  await expect(page.getByLabel('Скидка, ₽', { exact: true })).toHaveValue(
-    '250.25',
+  await expect(page.getByLabel('Скидка, %', { exact: true })).toHaveValue(
+    '12.50',
   )
   await expect(
     page.getByLabel('На одного клиента', { exact: true }),
-  ).toHaveValue('true')
+  ).toHaveValue('false')
   await expect(
     page.getByLabel('Указать срок действия', { exact: true }),
-  ).not.toBeChecked()
+  ).toBeChecked()
+  await expect(
+    page.getByRole('button', {
+      name: 'Близким Тестовый · 12,50 %',
+      exact: true,
+    }),
+  ).toBeVisible()
   await page.setViewportSize({ width: 320, height: 800 })
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320)
 })
 
-test('lost template create/edit responses preserve one key across cabinet sections', async ({
+test('lost template creation and archive responses preserve one key across sections', async ({
   page,
   context,
   baseURL,
@@ -239,7 +262,6 @@ test('lost template create/edit responses preserve one key across cabinet sectio
   ).json()
   expect(all.items).toHaveLength(1)
   const id = all.items[0].id
-  await page.getByLabel('Скидка, %', { exact: true }).fill('20')
   lose = true
   await page.route(`**/api/coupons/templates/${id}`, async (route) => {
     if (route.request().method() !== 'PUT') {
@@ -254,7 +276,7 @@ test('lost template create/edit responses preserve one key across cabinet sectio
     } else await route.continue()
   })
   await page
-    .getByRole('button', { name: 'Сохранить шаблон', exact: true })
+    .getByRole('button', { name: 'Отправить в архив', exact: true })
     .click()
   await expect(
     page.getByRole('button', {
@@ -275,7 +297,20 @@ test('lost template create/edit responses preserve one key across cabinet sectio
     await context.request.get(`/api/coupons/templates/${id}`)
   ).json()
   expect(updated.version).toBe(2)
-  expect(updated.value).toBe('20.00')
+  expect(updated.value).toBe('10.00')
+  expect(updated.archived).toBe(true)
+  await page
+    .getByRole('button', { name: '← Назад к шаблонам', exact: true })
+    .click()
+  await page.getByLabel('Показывать архивированные', { exact: true }).check()
+  await page
+    .getByRole('button', { name: 'Действия: Повтор Тестовый', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'Восстановить', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Восстановить шаблон', exact: true })
+    .click()
+  await expect(page.getByText(saved, { exact: true })).toBeVisible()
   await page
     .getByRole('button', { name: '← Назад к шаблонам', exact: true })
     .click()
@@ -316,7 +351,7 @@ test('lost template create/edit responses preserve one key across cabinet sectio
   expect(coupons.items).toHaveLength(1)
 })
 
-test('stale edits require refresh and archived templates are checked before filling issuance', async ({
+test('stale archive actions require refresh and issuance rechecks archived templates', async ({
   page,
   context,
   baseURL,
@@ -332,18 +367,24 @@ test('stale edits require refresh and archived templates are checked before fill
   })
   expect(response.status()).toBe(201)
   const t = await response.json()
-  await page.getByRole('button', { name: 'Найти', exact: true }).click()
-  await page.getByRole('button', { name: 'Изменить', exact: true }).click()
+  await page.getByLabel('Название шаблона', { exact: true }).fill('Конкуренция')
+  await page
+    .getByRole('button', {
+      name: 'Действия: Конкуренция Тестовый',
+      exact: true,
+    })
+    .click()
+  await page.getByRole('button', { name: 'В архив', exact: true }).click()
   const edit = {
     name: t.name,
     discount_type: t.discount_type,
-    value: '200',
+    value: '100',
     restrictions: '',
     total_limit: null,
     per_client_limit: 1,
     first_visit_only: false,
     expires_on: null,
-    archived: false,
+    archived: true,
     version: 1,
   }
   expect(
@@ -354,9 +395,8 @@ test('stale edits require refresh and archived templates are checked before fill
       })
     ).status(),
   ).toBe(200)
-  await page.getByLabel('Скидка, ₽', { exact: true }).fill('300')
   await page
-    .getByRole('button', { name: 'Сохранить шаблон', exact: true })
+    .getByRole('button', { name: 'Отправить в архив', exact: true })
     .click()
   await expect(
     page.getByRole('button', {
@@ -365,14 +405,15 @@ test('stale edits require refresh and archived templates are checked before fill
     }),
   ).toBeVisible()
   await expect(
-    page.getByRole('button', { name: 'Сохранить шаблон', exact: true }),
+    page.getByRole('button', { name: 'Отправить в архив', exact: true }),
   ).toBeDisabled()
   await page
     .getByRole('button', { name: 'Загрузить актуальную версию', exact: true })
     .click()
-  await expect(page.getByLabel('Скидка, ₽', { exact: true })).toHaveValue(
-    '200.00',
-  )
+  await page
+    .getByRole('button', { name: 'Восстановить шаблон', exact: true })
+    .click()
+  await expect(page.getByText(saved, { exact: true })).toBeVisible()
   await page
     .getByRole('button', { name: '← Назад к шаблонам', exact: true })
     .click()
@@ -380,7 +421,7 @@ test('stale edits require refresh and archived templates are checked before fill
     (
       await context.request.put(`/api/coupons/templates/${t.id}`, {
         headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
-        data: { ...edit, version: 2, archived: true },
+        data: { ...edit, version: 3, archived: true },
       })
     ).status(),
   ).toBe(200)

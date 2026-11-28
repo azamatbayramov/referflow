@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import CouponTermsFields from './CouponTermsFields.vue'
-import { copyTerms, emptyTerms, type CouponTerms } from '../coupon-terms'
+import {
+  copyTerms,
+  emptyTerms,
+  type IssuanceTerms,
+  type CouponTemplate,
+} from '../coupon-terms'
 import CouponUseForm from './CouponUseForm.vue'
 import CouponShare from './CouponShare.vue'
 import RedemptionHistory from './RedemptionHistory.vue'
 
-type Input = CouponTerms & { referrer_client_id: string | null }
+type Input = ReturnType<typeof emptyTerms> & {
+  referrer_client_id: string | null
+  template_id: string | null
+}
 type Coupon = Input & {
   id: string
   code: string
@@ -33,7 +41,10 @@ const props = defineProps<{
   initialUsage?: 'all' | 'used' | 'unused'
 }>()
 const usage = ref(props.initialUsage ?? 'all')
-const emit = defineEmits<{ expired: []; templates: [] }>()
+const emit = defineEmits<{ expired: []; templates: []; redeem: [] }>()
+const templateId = ref('')
+const suggestions = ref<CouponTemplate[]>([])
+const suggestionError = ref('')
 const items = ref<Coupon[]>([]),
   selected = ref<Coupon | null>(null),
   events = ref<Event[]>([])
@@ -47,11 +58,13 @@ const usageRevision = ref(0)
 const tab = ref<'use' | 'share' | 'history'>('use')
 const usePending = ref(false),
   historyPending = ref(false)
-const searchInput = ref<HTMLInputElement | null>(null)
 const listTitle = ref<HTMLElement | null>(null)
 let listScroll = 0
 const filterCount = computed(
-  () => Number(state.value !== 'all') + Number(usage.value !== 'all'),
+  () =>
+    Number(state.value !== 'all') +
+    Number(usage.value !== 'all') +
+    Number(!!templateId.value),
 )
 const form = ref(false),
   error = ref(''),
@@ -76,7 +89,7 @@ const labels: Record<string, string> = {
   exhausted: 'Исчерпан лимит',
 }
 function empty(): Input {
-  return { ...emptyTerms(), referrer_client_id: null }
+  return { ...emptyTerms(), referrer_client_id: null, template_id: null }
 }
 async function api(
   path: string,
@@ -121,6 +134,10 @@ async function api(
   }
   return response.json()
 }
+function clearTemplateFilter() {
+  templateId.value = ''
+  void load()
+}
 async function load(reset = true) {
   listController?.abort()
   const controller = new AbortController()
@@ -136,6 +153,7 @@ async function load(reset = true) {
         state: state.value,
         usage: usage.value,
         offset: next,
+        template_id: templateId.value,
       },
       'POST',
       controller.signal,
@@ -158,7 +176,7 @@ async function focusEditor() {
   editorTitle.value?.focus({ preventScroll: true })
   editor.value?.scrollIntoView({ block: 'start' })
 }
-async function create(terms?: CouponTerms) {
+async function create(terms?: IssuanceTerms) {
   if (busy.value || frozen.value || usePending.value || historyPending.value)
     return
   listScroll = window.scrollY
@@ -167,6 +185,7 @@ async function create(terms?: CouponTerms) {
   draft.value = {
     ...(terms ? copyTerms(terms) : emptyTerms()),
     referrer_client_id: null,
+    template_id: terms?.template_id ?? null,
   }
   frozen.value = null
   key = crypto.randomUUID()
@@ -177,7 +196,47 @@ async function create(terms?: CouponTerms) {
   clients.value = []
   clientQuery.value = ''
   await focusEditor()
+  void loadSuggestions()
   return true
+}
+async function loadSuggestions() {
+  suggestionError.value = ''
+  try {
+    const page = await api('/coupons/templates/search', {
+      sort: 'popular',
+      state: 'active',
+    })
+    if (alive) suggestions.value = page.items.slice(0, 3)
+  } catch {
+    if (alive)
+      suggestionError.value =
+        'Не удалось загрузить шаблоны. Можно заполнить условия вручную.'
+  }
+}
+async function chooseTemplate(id: string) {
+  if (busy.value || frozen.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    const t = (await api(
+      `/coupons/templates/${id}`,
+      undefined,
+      'GET',
+    )) as CouponTemplate
+    if (!alive) return
+    if (t.archived) {
+      error.value = 'Шаблон уже в архиве. Выберите другой.'
+      void loadSuggestions()
+      return
+    }
+    draft.value = { ...draft.value, ...copyTerms(t), template_id: t.id }
+  } catch (e) {
+    if (alive)
+      error.value =
+        e instanceof Error ? e.message : 'Не удалось загрузить шаблон.'
+  } finally {
+    if (alive) busy.value = false
+  }
 }
 async function open(c: Coupon) {
   if (
@@ -317,20 +376,18 @@ async function close() {
   listTitle.value?.focus({ preventScroll: true })
   window.scrollTo({ top: listScroll })
 }
-async function showList(nextUsage: 'all' | 'used' | 'unused') {
+async function showList(nextUsage: 'all' | 'used' | 'unused', source = '') {
   if (busy.value || frozen.value || usePending.value || historyPending.value)
     return
   await close()
   usage.value = nextUsage
   state.value = 'all'
   query.value = ''
+  templateId.value = source
   await load()
+  return true
 }
 defineExpose({ showList, create, focusEditor })
-function findCoupon() {
-  searchInput.value?.focus()
-  searchInput.value?.scrollIntoView({ block: 'center' })
-}
 function amount(c: Coupon) {
   return `${c.value.replace(/\.00$/, '').replace('.', ',')} ${c.discount_type === 'percent' ? '%' : '₽'}`
 }
@@ -356,7 +413,7 @@ onBeforeUnmount(() => {
           <p class="muted">Выдавайте купоны и отмечайте их использование.</p>
         </div>
         <div class="workspace-actions">
-          <button class="secondary" type="button" @click="findCoupon">
+          <button class="secondary" type="button" @click="emit('redeem')">
             Использовать купон</button
           ><button
             class="primary"
@@ -372,7 +429,6 @@ onBeforeUnmount(() => {
         <label class="sr-only" for="coupon-search">Номер купона</label
         ><input
           id="coupon-search"
-          ref="searchInput"
           v-model="query"
           inputmode="numeric"
           enterkeyhint="search"
@@ -381,6 +437,12 @@ onBeforeUnmount(() => {
           placeholder="Номер купона"
         /><button class="primary" :disabled="loading">Найти</button>
       </form>
+      <p v-if="templateId" class="source-filter">
+        Купоны из выбранного шаблона
+        <button class="text-button" type="button" @click="clearTemplateFilter">
+          Сбросить
+        </button>
+      </p>
       <details class="coupon-filters">
         <summary>
           Фильтры<span v-if="filterCount"> · {{ filterCount }}</span>
@@ -477,9 +539,37 @@ onBeforeUnmount(() => {
               Номер присвоится автоматически. По умолчанию — один раз на
               клиента.
             </p>
-            <button class="secondary" type="button" @click="emit('templates')">
-              Заполнить из шаблона
-            </button>
+            <div class="template-suggestions">
+              <h4>Часто используемые шаблоны</h4>
+              <p v-if="suggestionError" class="field-help">
+                {{ suggestionError }}
+              </p>
+              <div class="template-suggestion-list">
+                <button
+                  v-for="t in suggestions"
+                  :key="t.id"
+                  class="secondary"
+                  type="button"
+                  :aria-pressed="draft.template_id === t.id"
+                  @click="chooseTemplate(t.id)"
+                >
+                  {{ t.name }} ·
+                  {{ t.value.replace(/\.00$/, '').replace('.', ',') }}
+                  {{ t.discount_type === 'percent' ? '%' : '₽' }}
+                </button>
+              </div>
+              <button
+                class="text-button"
+                type="button"
+                @click="emit('templates')"
+              >
+                Больше шаблонов
+              </button>
+              <p v-if="draft.template_id" class="field-help">
+                Условия скопированы из шаблона. Их можно изменить только для
+                этого купона.
+              </p>
+            </div>
             <CouponTermsFields v-model="draft" prefix="issue" />
             <details class="coupon-referrer">
               <summary>Кто передаст купон (необязательно)</summary>

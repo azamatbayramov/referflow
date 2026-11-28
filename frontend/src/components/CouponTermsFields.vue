@@ -80,11 +80,14 @@ const timed = computed({
         required
     /></template>
     <label class="check-label"
-      ><input v-model="terms.first_visit_only" type="checkbox" />Только первое
-      посещение специалиста</label
+      ><input v-model="terms.first_visit_only" type="checkbox" /><span
+        >Только первое посещение специалиста</span
+      ></label
     >
     <label class="check-label"
-      ><input v-model="timed" type="checkbox" />Указать срок действия</label
+      ><input v-model="timed" type="checkbox" /><span
+        >Указать срок действия</span
+      ></label
     ><template v-if="timed"
       ><label :for="`${prefix}-coupon-expiry`">Последний день действия</label
       ><input

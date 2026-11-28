@@ -31,6 +31,7 @@ type Input struct {
 	FirstVisitOnly   bool    `json:"first_visit_only"`
 	ExpiresOn        *string `json:"expires_on"`
 	ReferrerClientID *string `json:"referrer_client_id"`
+	TemplateID       *string `json:"template_id,omitempty"`
 }
 type Coupon struct {
 	ID               string     `json:"id"`
@@ -45,6 +46,7 @@ type Coupon struct {
 	ExpiresAt        *time.Time `json:"expires_at"`
 	ReferrerClientID *string    `json:"referrer_client_id"`
 	ReferrerName     *string    `json:"referrer_name"`
+	TemplateID       *string    `json:"template_id"`
 	UsedCount        int        `json:"used_count"`
 	Status           string     `json:"status"`
 	RevokedAt        *time.Time `json:"revoked_at"`
@@ -57,10 +59,11 @@ type Event struct {
 	OccurredAt time.Time `json:"occurred_at"`
 }
 type Search struct {
-	Usage  string `json:"usage"`
-	Code   string `json:"code"`
-	State  string `json:"state"`
-	Offset int    `json:"offset"`
+	TemplateID string `json:"template_id"`
+	Usage      string `json:"usage"`
+	Code       string `json:"code"`
+	State      string `json:"state"`
+	Offset     int    `json:"offset"`
 }
 type Page struct {
 	Items   []Coupon `json:"items"`
@@ -145,6 +148,9 @@ func normalize(in Input) (Input, int64, *time.Time, error) {
 		expires = &end
 	}
 	if in.ReferrerClientID != nil && !validUUID(*in.ReferrerClientID) {
+		return in, 0, nil, ErrInvalid
+	}
+	if in.TemplateID != nil && !validUUID(*in.TemplateID) {
 		return in, 0, nil, ErrInvalid
 	}
 	return in, v, expires, nil

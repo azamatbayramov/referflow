@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import CouponTemplatesPanel from './components/CouponTemplatesPanel.vue'
-import type { CouponTerms } from './coupon-terms'
+import type { IssuanceTerms } from './coupon-terms'
+import CouponRedemptionPanel from './components/CouponRedemptionPanel.vue'
 import ClientsPanel from './components/ClientsPanel.vue'
 import CouponsPanel from './components/CouponsPanel.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
@@ -11,9 +12,9 @@ type Session = {
   expires_at: string
   csrf_token: string
 }
-const section = ref<'clients' | 'coupons' | 'statistics' | 'templates'>(
-  'coupons',
-)
+const section = ref<
+  'clients' | 'coupons' | 'statistics' | 'templates' | 'redeem'
+>('coupons')
 const clientsVisited = ref(false)
 const keyboardOpen = ref(false)
 const scrollPositions: Partial<Record<typeof section.value, number>> = {}
@@ -48,7 +49,7 @@ async function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
   couponsPanel.value?.showList(usage)
 }
 async function issueTemplate(
-  terms: CouponTerms,
+  terms: IssuanceTerms,
   complete: (opened: boolean) => void,
 ) {
   const opened = await couponsPanel.value?.create(terms)
@@ -57,6 +58,14 @@ async function issueTemplate(
     await nextTick()
     await couponsPanel.value?.focusEditor()
   }
+  complete(Boolean(opened))
+}
+async function templateCoupons(
+  id: string,
+  complete: (opened: boolean) => void,
+) {
+  const opened = await couponsPanel.value?.showList('all', id)
+  if (opened) await selectSection('coupons')
   complete(Boolean(opened))
 }
 function home(event: MouseEvent) {
@@ -214,6 +223,15 @@ onBeforeUnmount(() => {
       <nav v-if="session" class="cabinet-nav" aria-label="Разделы кабинета">
         <button
           type="button"
+          :aria-pressed="section === 'redeem'"
+          @click="selectSection('redeem')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 12l3 3 5-6" /></svg
+          ><span>Применить</span>
+        </button>
+        <button
+          type="button"
           :aria-pressed="section === 'coupons'"
           @click="selectSection('coupons')"
         >
@@ -335,6 +353,13 @@ onBeforeUnmount(() => {
         :csrf-token="session.csrf_token"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
         @templates="selectSection('templates')"
+        @redeem="selectSection('redeem')"
+      />
+      <CouponRedemptionPanel
+        v-show="section === 'redeem'"
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />
       <CouponTemplatesPanel
         v-show="section === 'templates'"
@@ -342,6 +367,7 @@ onBeforeUnmount(() => {
         :csrf-token="session.csrf_token"
         :active="section === 'templates'"
         @issue="issueTemplate"
+        @coupons="templateCoupons"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />
       <ClientsPanel

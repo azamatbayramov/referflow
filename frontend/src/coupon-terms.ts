@@ -15,6 +15,7 @@ export type CouponTemplate = CouponTerms & {
   created_at: string
   updated_at: string
 }
+export type IssuanceTerms = CouponTerms & { template_id: string }
 export function emptyTerms(): CouponTerms {
   return {
     discount_type: 'percent',
@@ -26,7 +27,7 @@ export function emptyTerms(): CouponTerms {
     expires_on: null,
   }
 }
-// Pick fields explicitly: names, metadata and client bindings never enter issuance.
+// Copy independent conditions, not template metadata or client bindings.
 export function copyTerms(t: CouponTerms): CouponTerms {
   return {
     discount_type: t.discount_type,
