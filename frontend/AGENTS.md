@@ -10,3 +10,5 @@
 - Runtime changes: start the Compose stack, install Chromium with `npx playwright install chromium`, then `npm run test:e2e`. Browser checks target `BASE_URL` or `http://127.0.0.1:8080`.
 
 - Coupon workspace is kept mounted across cabinet sections to preserve draft, selection and idempotency keys. Do not unmount use/history forms when changing coupon tabs: mutation responses must still update the coupon. Logout/session expiry must still destroy private state. See `../docs/interface.md`.
+
+- Prioritize a phone browser. Up to 900px the cabinet uses a safe-area-aware bottom navigation; preserve scroll positions and mounted coupon/template/client forms across section changes. Do not obscure focused fields or final actions with fixed navigation. Keep text inputs at least 16px and touch controls at least 48px. Desktop remains supported. Native share sends only a public coupon URL and generic title; cancellation is not success.

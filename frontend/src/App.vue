@@ -14,9 +14,36 @@ type Session = {
 const section = ref<'clients' | 'coupons' | 'statistics' | 'templates'>(
   'coupons',
 )
+const clientsVisited = ref(false)
+const keyboardOpen = ref(false)
+const scrollPositions: Partial<Record<typeof section.value, number>> = {}
+async function selectSection(next: typeof section.value) {
+  if (next === section.value) return
+  scrollPositions[section.value] = window.scrollY
+  if (next === 'clients') clientsVisited.value = true
+  section.value = next
+  await nextTick()
+  window.scrollTo({ top: scrollPositions[next] ?? 0 })
+}
+function updateKeyboard() {
+  const viewport = window.visualViewport
+  const focused = document.activeElement?.matches(
+    'input:not([type=checkbox]):not([type=radio]), textarea, select',
+  )
+  keyboardOpen.value = Boolean(
+    focused &&
+    viewport &&
+    window.innerHeight - viewport.height - viewport.offsetTop > 150,
+  )
+}
+let keyboardFrame = 0
+function queueKeyboardCheck() {
+  cancelAnimationFrame(keyboardFrame)
+  keyboardFrame = requestAnimationFrame(updateKeyboard)
+}
 const couponsPanel = ref<InstanceType<typeof CouponsPanel> | null>(null)
 async function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
-  section.value = 'coupons'
+  await selectSection('coupons')
   await nextTick()
   couponsPanel.value?.showList(usage)
 }
@@ -26,7 +53,7 @@ async function issueTemplate(
 ) {
   const opened = await couponsPanel.value?.create(terms)
   if (opened) {
-    section.value = 'coupons'
+    await selectSection('coupons')
     await nextTick()
     await couponsPanel.value?.focusEditor()
   }
@@ -49,13 +76,20 @@ let refreshController: AbortController | undefined
 
 function showGuest(message = '') {
   clearTimeout(expiryTimer)
+  clientsVisited.value = false
+  keyboardOpen.value = false
+  for (const key of Object.keys(scrollPositions))
+    delete scrollPositions[key as typeof section.value]
   session.value = null
   state.value = 'guest'
   error.value = message
 }
 function acceptSession(value: Session) {
   clearTimeout(expiryTimer)
-  if (session.value?.user.id !== value.user.id) section.value = 'coupons'
+  if (session.value?.user.id !== value.user.id) {
+    section.value = 'coupons'
+    clientsVisited.value = false
+  }
   session.value = value
   state.value = 'member'
   error.value = ''
@@ -148,16 +182,29 @@ async function logout() {
 onMounted(() => {
   void refresh()
   window.addEventListener('focus', refresh)
+  window.visualViewport?.addEventListener('resize', queueKeyboardCheck)
+  document.addEventListener('focusin', queueKeyboardCheck)
+  document.addEventListener('focusout', queueKeyboardCheck)
 })
 onBeforeUnmount(() => {
   refreshController?.abort()
   clearTimeout(expiryTimer)
+  cancelAnimationFrame(keyboardFrame)
+  window.visualViewport?.removeEventListener('resize', queueKeyboardCheck)
+  document.removeEventListener('focusin', queueKeyboardCheck)
+  document.removeEventListener('focusout', queueKeyboardCheck)
   window.removeEventListener('focus', refresh)
 })
 </script>
 
 <template>
-  <div class="page" :class="{ 'member-page': state === 'member' }">
+  <div
+    class="page"
+    :class="{
+      'member-page': state === 'member',
+      'keyboard-open': keyboardOpen,
+    }"
+  >
     <header class="header app-header">
       <a class="brand" href="/" aria-label="Referflow — главная" @click="home"
         ><img src="/favicon.svg" alt="" width="32" height="32" /><span
@@ -168,30 +215,43 @@ onBeforeUnmount(() => {
         <button
           type="button"
           :aria-pressed="section === 'coupons'"
-          @click="section = 'coupons'"
+          @click="selectSection('coupons')"
         >
-          Купоны
-        </button>
-        <button
-          type="button"
-          :aria-pressed="section === 'clients'"
-          @click="section = 'clients'"
-        >
-          Клиенты
-        </button>
-        <button
-          type="button"
-          :aria-pressed="section === 'statistics'"
-          @click="section = 'statistics'"
-        >
-          Статистика
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v5a2 2 0 0 0 0 4v5H4v-5a2 2 0 0 0 0-4V5Z" />
+            <path d="M9 5v14" stroke-dasharray="2 3" /></svg
+          ><span>Купоны</span>
         </button>
         <button
           type="button"
           :aria-pressed="section === 'templates'"
-          @click="section = 'templates'"
+          @click="selectSection('templates')"
         >
-          Шаблоны
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="7" y="7" width="13" height="14" rx="2" />
+            <path d="M16 7V3H3v14h4M11 12h5m-5 4h5" /></svg
+          ><span>Шаблоны</span>
+        </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'clients'"
+          @click="selectSection('clients')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="9" cy="8" r="3" />
+            <path
+              d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 5"
+            /></svg
+          ><span>Клиенты</span>
+        </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'statistics'"
+          @click="selectSection('statistics')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 3v18h17M9 17v-5m5 5V8m5 9V4" /></svg
+          ><span>Статистика</span>
         </button>
       </nav>
       <details v-if="session" class="account-menu">
@@ -274,7 +334,7 @@ onBeforeUnmount(() => {
         :key="session.user.id"
         :csrf-token="session.csrf_token"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
-        @templates="section = 'templates'"
+        @templates="selectSection('templates')"
       />
       <CouponTemplatesPanel
         v-show="section === 'templates'"
@@ -285,8 +345,10 @@ onBeforeUnmount(() => {
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />
       <ClientsPanel
-        v-if="section === 'clients'"
+        v-if="clientsVisited"
+        v-show="section === 'clients'"
         :key="session.user.id"
+        :active="section === 'clients'"
         :csrf-token="session.csrf_token"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />

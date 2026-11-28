@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import RedemptionHistory from './RedemptionHistory.vue'
 
 type Client = {
@@ -20,7 +20,7 @@ class ApiError extends Error {
     super(message)
   }
 }
-const props = defineProps<{ csrfToken: string }>()
+const props = defineProps<{ csrfToken: string; active: boolean }>()
 const emit = defineEmits<{ expired: [] }>()
 const items = ref<Client[]>([])
 const query = ref('')
@@ -43,7 +43,10 @@ const historyRevision = ref(0)
 const editor = ref<HTMLElement | null>(null)
 const editorTitle = ref<HTMLElement | null>(null)
 let creationKey = crypto.randomUUID()
-let frozenCreate: { name: string; phone: string } | undefined
+const frozenCreate = ref<{ name: string; phone: string }>()
+const historyPending = ref(false)
+const listTitle = ref<HTMLElement | null>(null)
+let listScroll = 0
 let searchController: AbortController | undefined
 let duplicateController: AbortController | undefined
 let alive = true
@@ -126,7 +129,7 @@ function resetForm() {
   events.value = []
   duplicatesChecked.value = false
   acknowledge.value = false
-  frozenCreate = undefined
+  frozenCreate.value = undefined
   creationKey = crypto.randomUUID()
 }
 async function focusEditor() {
@@ -136,6 +139,8 @@ async function focusEditor() {
   if (window.innerWidth <= 900) editor.value?.scrollIntoView({ block: 'start' })
 }
 async function create() {
+  if (busy.value || frozenCreate.value || historyPending.value) return
+  if (!form.value) listScroll = window.scrollY
   resetForm()
   error.value = ''
   notice.value = ''
@@ -143,7 +148,8 @@ async function create() {
   await focusEditor()
 }
 async function open(client: Client) {
-  if (busy.value) return
+  if (busy.value || frozenCreate.value || historyPending.value) return
+  if (!form.value) listScroll = window.scrollY
   duplicateController?.abort()
   clearTimeout(duplicateTimer)
   error.value = ''
@@ -160,7 +166,7 @@ async function open(client: Client) {
     matches.value = []
     acknowledge.value = false
     duplicatesChecked.value = false
-    frozenCreate = undefined
+    frozenCreate.value = undefined
     form.value = true
     await focusEditor()
     void duplicates()
@@ -172,12 +178,15 @@ async function open(client: Client) {
     if (alive) busy.value = false
   }
 }
-function close() {
-  if (busy.value) return
+async function close() {
+  if (busy.value || frozenCreate.value || historyPending.value) return
   duplicateController?.abort()
   clearTimeout(duplicateTimer)
   form.value = false
   resetForm()
+  await nextTick()
+  listTitle.value?.focus({ preventScroll: true })
+  if (window.innerWidth <= 900) window.scrollTo({ top: listScroll })
 }
 function changed() {
   duplicateController?.abort()
@@ -226,7 +235,7 @@ async function save() {
   }
   busy.value = true
   try {
-    if (!frozenCreate) {
+    if (!frozenCreate.value) {
       await duplicates()
       if (!duplicatesChecked.value) return
       if (matches.value.length && !acknowledge.value) {
@@ -247,8 +256,8 @@ async function save() {
         'PUT',
       )
     else {
-      frozenCreate ??= { name: name.value, phone: phone.value }
-      client = await api('', frozenCreate)
+      frozenCreate.value ??= { name: name.value, phone: phone.value }
+      client = await api('', frozenCreate.value)
     }
     if (!alive) return
     form.value = false
@@ -260,7 +269,7 @@ async function save() {
     notice.value = 'Карточка сохранена.'
   } catch (e) {
     if (e instanceof ApiError && e.status === 400 && !selected.value) {
-      frozenCreate = undefined
+      frozenCreate.value = undefined
       creationKey = crypto.randomUUID()
     }
     if (alive)
@@ -304,7 +313,16 @@ const labels: Record<string, string> = {
   archived: 'В архив',
   restored: 'Возвращена из архива',
 }
-onMounted(() => void load())
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) return
+    if (!form.value) void load()
+    else if (selected.value && !busy.value && !historyPending.value)
+      historyRevision.value++
+  },
+  { immediate: true },
+)
 onBeforeUnmount(() => {
   alive = false
   searchController?.abort()
@@ -314,13 +332,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="clients-section" aria-labelledby="clients-title">
+  <section
+    class="clients-section"
+    :class="{ 'has-client-editor': form }"
+    aria-labelledby="clients-title"
+  >
     <div class="clients-title-row">
       <div>
         <p class="eyebrow"><span class="dot"></span> Ваши клиенты</p>
-        <h2 id="clients-title">Карточки клиентов</h2>
+        <h2 id="clients-title" ref="listTitle" tabindex="-1">
+          Карточки клиентов
+        </h2>
       </div>
-      <button class="primary" type="button" :disabled="busy" @click="create">
+      <button
+        class="primary"
+        type="button"
+        :disabled="busy || !!frozenCreate || historyPending"
+        @click="create"
+      >
         Добавить клиента <span aria-hidden="true">+</span>
       </button>
     </div>
@@ -334,6 +363,7 @@ onBeforeUnmount(() => {
             <input
               id="client-search"
               v-model="query"
+              enterkeyhint="search"
               type="search"
               maxlength="120"
               autocomplete="off"
@@ -360,7 +390,7 @@ onBeforeUnmount(() => {
           <li v-for="client in items" :key="client.id">
             <button
               type="button"
-              :disabled="busy"
+              :disabled="busy || !!frozenCreate || historyPending"
               :aria-pressed="selected?.id === client.id"
               @click="open(client)"
             >
@@ -398,7 +428,7 @@ onBeforeUnmount(() => {
           <button
             class="secondary"
             type="button"
-            :disabled="busy"
+            :disabled="busy || !!frozenCreate || historyPending"
             @click="close"
           >
             Закрыть
@@ -496,6 +526,7 @@ onBeforeUnmount(() => {
             title="Использования купонов клиента"
             :refresh-token="historyRevision"
             @expired="emit('expired')"
+            @pending="historyPending = $event"
           />
         </template>
       </section>

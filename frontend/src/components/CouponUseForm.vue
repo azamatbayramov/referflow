@@ -188,6 +188,7 @@ onBeforeUnmount(() => {
           <input
             id="redemption-client-search"
             v-model="query"
+            enterkeyhint="search"
             maxlength="120"
             :disabled="busy || !!frozen || recipientPending || blocked"
           /><button

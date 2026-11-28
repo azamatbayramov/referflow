@@ -1715,3 +1715,226 @@ textarea {
 .coupon-term-fields {
   display: contents;
 }
+
+/* Phone-first cabinet: keep primary navigation within thumb reach. */
+.cabinet-nav svg {
+  display: none;
+}
+@media (max-width: 900px) {
+  html {
+    scroll-padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+  .member-page {
+    padding: env(safe-area-inset-top, 0px)
+      max(16px, env(safe-area-inset-right, 0px))
+      calc(92px + env(safe-area-inset-bottom, 0px))
+      max(16px, env(safe-area-inset-left, 0px));
+  }
+  .app-header {
+    min-height: 68px;
+    padding: 12px 0;
+    flex-wrap: nowrap;
+  }
+  .app-header .cabinet-nav {
+    position: fixed;
+    z-index: 30;
+    inset: auto 0 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0;
+    padding: 8px max(8px, env(safe-area-inset-right, 0px))
+      calc(8px + env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
+    background: #fffef9;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 20px #203d3208;
+  }
+  .app-header .cabinet-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 56px;
+    padding: 7px 2px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .cabinet-nav svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .account-menu > summary {
+    min-height: 48px;
+  }
+  .keyboard-open .cabinet-nav {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .workspace {
+    padding: 24px 0;
+  }
+  .workspace input:not([type='checkbox']):not([type='radio']),
+  .workspace select,
+  .workspace textarea,
+  .simple-login input {
+    font-size: 16px;
+  }
+  .workspace input:not([type='checkbox']):not([type='radio']),
+  .workspace select,
+  .simple-login input {
+    min-height: 48px;
+  }
+  .workspace button,
+  .workspace summary,
+  .simple-login button,
+  .public-actions button {
+    min-height: 48px;
+  }
+  .workspace button {
+    touch-action: manipulation;
+  }
+  .workspace .check-label {
+    min-height: 48px;
+    padding: 10px 0;
+    align-items: flex-start;
+    font-size: 14px;
+  }
+  .workspace .check-label input {
+    width: 22px;
+    height: 22px;
+    margin: 1px 0 0;
+  }
+  .workspace label {
+    font-size: 14px;
+  }
+  .coupon-list-screen .workspace-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .coupon-list-screen .workspace-actions .primary {
+    order: -1;
+  }
+  .workspace-heading .workspace-actions > button {
+    padding: 12px 8px;
+    min-width: 0;
+  }
+  .coupon-list {
+    padding: 0 12px;
+  }
+  .coupon-list button {
+    flex-wrap: wrap;
+    padding: 18px 0;
+  }
+  .coupon-list-main {
+    flex: 1 1 145px;
+  }
+  .coupon-list-side {
+    max-width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .coupon-list-main .muted {
+    line-height: 1.5;
+  }
+  .coupon-create-card,
+  .coupon-action-card {
+    padding: 20px 16px;
+  }
+  .coupon-create-card form > .primary,
+  .coupon-create-card > .primary,
+  .coupon-use form > .primary,
+  .client-editor form > .primary,
+  .template-list .workspace-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+  .share-card {
+    padding: 20px 16px;
+  }
+  .share-qr {
+    flex-direction: column;
+    text-align: center;
+    gap: 8px;
+  }
+  .share-qr img {
+    width: 176px;
+    height: 176px;
+  }
+  .share-qr .field-help {
+    margin: 0;
+  }
+  .share-content h3,
+  .share-content > .muted {
+    text-align: center;
+  }
+  .share-actions {
+    align-items: stretch;
+  }
+  .share-actions > button,
+  .share-actions > a {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+  }
+  .share-actions > a {
+    display: flex;
+    align-items: center;
+  }
+  .compact-terms {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .compact-terms > div {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .compact-terms dt,
+  .compact-terms dd {
+    font-size: 14px;
+    margin: 0;
+  }
+  .quick-client {
+    padding: 16px 12px;
+  }
+  .workspace .search-row {
+    flex-direction: row;
+  }
+  .workspace .search-row input {
+    flex: 1;
+    min-width: 0;
+  }
+  .workspace .search-row button {
+    flex-shrink: 0;
+  }
+  .clients-section.has-client-editor > .clients-title-row,
+  .clients-section.has-client-editor .clients-list {
+    display: none;
+  }
+  .has-client-editor .clients-grid {
+    display: block;
+  }
+  .client-editor {
+    padding: 20px 16px;
+  }
+  .client-editor .editor-heading {
+    margin-bottom: 20px;
+  }
+  .member-page .app-footer {
+    display: none;
+  }
+}

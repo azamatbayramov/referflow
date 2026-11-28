@@ -219,7 +219,7 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
   await expect(
     page.getByLabel('Применения купона', { exact: true }),
   ).toHaveValue('used')
-  await expect(page.locator('.client-rows > li')).toHaveCount(2)
+  await expect(page.locator('.coupon-list > li')).toHaveCount(2)
   await page
     .getByRole('button', { name: new RegExp(`№ ${firstCoupon.code}.*Открыть`) })
     .click()
@@ -231,7 +231,7 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
       exact: true,
     })
     .click()
-  await expect(page.locator('.client-rows > li')).toHaveCount(1)
+  await expect(page.locator('.coupon-list > li')).toHaveCount(1)
   await page
     .getByRole('button', {
       name: new RegExp(`№ ${secondCoupon.code}.*Открыть`),
@@ -262,9 +262,11 @@ test('pilot workflow records only coupon uses, counts unique cards and preserves
   await page
     .getByLabel('Применения купона', { exact: true })
     .selectOption('unused')
-  await expect(page.locator('.client-rows > li')).toHaveCount(3)
+  await expect(page.locator('.coupon-list > li')).toHaveCount(3)
   await page.getByRole('button', { name: 'Клиенты', exact: true }).click()
-  await page.getByRole('button', { name: /Клиент пилота.*Открыть/ }).click()
+  await expect(
+    page.getByRole('region', { name: 'Карточка клиента', exact: true }),
+  ).toBeVisible()
   const history = page.getByRole('region', {
     name: 'Использования купонов клиента',
     exact: true,
