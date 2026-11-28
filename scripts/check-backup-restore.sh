@@ -45,7 +45,7 @@ signature() {
 }
 signature "$source_db" > "$work_dir/source.signature"
 # Guard against an accidentally empty fixture/check rather than accepting 0=0.
-test "$(wc -l < "$work_dir/source.signature")" -eq 10
+test "$(wc -l < "$work_dir/source.signature")" -eq 12
 if grep -q '|0|' "$work_dir/source.signature"; then
   printf 'Backup fixture unexpectedly contains an empty table\n' >&2
   exit 1
@@ -59,4 +59,4 @@ if ! cmp -s "$work_dir/source.signature" "$work_dir/target.signature"; then
   printf 'Backup restore data or migration signatures differ\n' >&2
   exit 1
 fi
-printf 'Backup/restore verified on isolated artificial databases: all 10 tables and migration checksums preserved.\n'
+printf 'Backup/restore verified on isolated artificial databases: all 12 tables and migration checksums preserved.\n'

@@ -42,3 +42,8 @@ preserves the added tables. See [coupons](../../docs/coupons.md).
 composite FKs and permanent idempotency keys. Existing migrations stay unchanged.
 Keep the table on rollback; the earlier issuance UI does not show this history.
 See [redemptions](../../docs/redemptions.md).
+
+`006_coupon_templates.sql` adds private, owner-scoped coupon defaults and permanent
+mutation keys with optimistic versions. It does not change issued coupons or old
+migrations. Preserve both added tables on application rollback. See
+[coupon templates](../../docs/coupon-templates.md).

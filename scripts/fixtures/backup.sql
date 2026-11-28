@@ -3,6 +3,7 @@ DO $fixture$
 DECLARE
     fixture_owner uuid := gen_random_uuid();
     fixture_client uuid := gen_random_uuid();
+    fixture_template uuid := gen_random_uuid();
     fixture_coupon uuid := gen_random_uuid();
 BEGIN
     INSERT INTO specialists(id,login,name,password_hash)
@@ -19,6 +20,8 @@ BEGIN
       VALUES(gen_random_uuid(),fixture_owner,fixture_coupon,fixture_client,'percent',1250,true,true,true,clock_timestamp()-interval '1 minute',gen_random_uuid(),decode(repeat('12',32),'hex'),clock_timestamp(),fixture_owner,'Тестовая отмена');
     INSERT INTO sessions(token_hash,specialist_id,expires_at) VALUES(decode(repeat('34',32),'hex'),fixture_owner,now()+interval '1 hour');
     INSERT INTO login_limits(key,attempts,resets_at) VALUES('artificial-backup-key',1,now()+interval '1 minute');
+    INSERT INTO coupon_templates(id,specialist_id,name,discount_type,value_minor,restrictions,archived,version) VALUES(fixture_template,fixture_owner,'Тестовый шаблон','fixed',25025,'Тестовые условия',true,2);
+    INSERT INTO coupon_template_operations(specialist_id,idempotency_key,template_id,request_hash) VALUES(fixture_owner,gen_random_uuid(),fixture_template,decode(repeat('56',32),'hex'));
     INSERT INTO coupon_lookup_limits(specialist_id,attempts,resets_at) VALUES(fixture_owner,1,now()+interval '1 minute');
 END
 $fixture$;

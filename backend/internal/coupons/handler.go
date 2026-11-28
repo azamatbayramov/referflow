@@ -20,6 +20,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, 401, map[string]string{"status": "unauthenticated"})
 		return
 	}
+	if r.URL.Path == "/api/coupons/templates" || strings.HasPrefix(r.URL.Path, "/api/coupons/templates/") {
+		h.templates(w, r, user.ID)
+		return
+	}
 	var result any
 	var err error
 	code := 200
@@ -98,6 +102,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, 404, map[string]string{"status": "not_found"})
 		return
 	}
+	respond(w, code, result, err)
+}
+
+func respond(w http.ResponseWriter, code int, result any, err error) {
 	if err != nil {
 		code = 503
 		status := "unavailable"
