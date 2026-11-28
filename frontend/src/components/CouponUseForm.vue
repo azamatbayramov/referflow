@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import RedemptionHistory from './RedemptionHistory.vue'
 import QuickClientForm from './QuickClientForm.vue'
 import {
@@ -28,12 +28,58 @@ const props = defineProps<{
   csrfToken: string
   refreshToken: number
   blocked?: boolean
+  stepped?: boolean
+  idPrefix?: string
 }>()
 const emit = defineEmits<{
   expired: []
   changed: []
   pending: [pending: boolean]
 }>()
+const prefix = computed(() => props.idPrefix ?? 'redemption')
+const eligibility = ref(''),
+  checking = ref(false)
+const eligibilityLabels: Record<string, string> = {
+  personal_limit:
+    'Этот клиент уже использовал купон максимально допустимое число раз.',
+  archived_client: 'Клиент находится в архиве. Выберите активного клиента.',
+  revoked: 'Купон отозван.',
+  expired: 'Срок действия купона истек.',
+  total_limit: 'Общий лимит купона исчерпан.',
+}
+let eligibilityController: AbortController | undefined
+async function checkEligibility() {
+  eligibilityController?.abort()
+  eligibility.value = ''
+  checking.value = false
+  if (!props.stepped || !clientId.value || frozen.value) return
+  const current = new AbortController()
+  eligibilityController = current
+  checking.value = true
+  try {
+    const response = await fetch(
+      `/api/coupons/${props.coupon.id}/eligibility`,
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': props.csrfToken,
+        },
+        body: JSON.stringify({ client_id: clientId.value }),
+        signal: AbortSignal.any([current.signal, AbortSignal.timeout(10000)]),
+      },
+    )
+    if (response.status === 401) emit('expired')
+    if (!response.ok) throw new Error()
+    const result = await response.json()
+    if (alive && !current.signal.aborted) eligibility.value = result.status
+  } catch {
+    if (alive && !current.signal.aborted) eligibility.value = 'unavailable'
+  } finally {
+    if (alive && !current.signal.aborted) checking.value = false
+  }
+}
 const addingClient = ref(false),
   quickPending = ref(false),
   recipientPending = ref(false)
@@ -71,6 +117,7 @@ function selectionChanged() {
   notice.value = ''
   error.value = ''
   key = crypto.randomUUID()
+  void checkEligibility()
 }
 async function search() {
   if (busy.value || frozen.value || recipientPending.value || props.blocked)
@@ -111,7 +158,13 @@ async function search() {
   }
 }
 async function apply() {
-  if (busy.value || loading.value || recipientPending.value || props.blocked)
+  if (
+    busy.value ||
+    loading.value ||
+    recipientPending.value ||
+    props.blocked ||
+    (!frozen.value && props.stepped && eligibility.value !== 'eligible')
+  )
     return
   busy.value = true
   error.value = ''
@@ -155,6 +208,12 @@ async function apply() {
   }
 }
 watch(
+  () => props.refreshToken,
+  () => {
+    if (!frozen.value) void checkEligibility()
+  },
+)
+watch(
   () => props.coupon.id,
   () => {
     controller?.abort()
@@ -167,12 +226,15 @@ watch(
 onBeforeUnmount(() => {
   alive = false
   controller?.abort()
+  eligibilityController?.abort()
   emit('pending', false)
 })
 </script>
 <template>
-  <section class="coupon-use" aria-labelledby="coupon-use-title">
-    <h4 id="coupon-use-title">Использовать купон</h4>
+  <section class="coupon-use" :aria-labelledby="`${prefix}-use-title`">
+    <h4 :id="`${prefix}-use-title`">
+      {{ stepped ? 'Получатель и подтверждения' : 'Использовать купон' }}
+    </h4>
     <p class="field-help">Найдите клиента по имени или телефону.</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="success" role="status">{{ notice }}</p>
@@ -183,10 +245,10 @@ onBeforeUnmount(() => {
         aria-label="Поиск получателя скидки"
         @submit.prevent="search"
       >
-        <label for="redemption-client-search">Найти получателя скидки</label>
+        <label :for="`${prefix}-client-search`">Найти получателя скидки</label>
         <div class="search-row">
           <input
-            id="redemption-client-search"
+            :id="`${prefix}-client-search`"
             v-model="query"
             enterkeyhint="search"
             maxlength="120"
@@ -223,9 +285,9 @@ onBeforeUnmount(() => {
         class="coupon-fields"
         :disabled="busy || !!frozen || recipientPending || blocked"
       >
-        <label for="redemption-client">Получатель скидки</label
+        <label :for="`${prefix}-client`">Получатель скидки</label
         ><select
-          id="redemption-client"
+          :id="`${prefix}-client`"
           v-model="clientId"
           required
           @change="selectionChanged"
@@ -235,21 +297,54 @@ onBeforeUnmount(() => {
             {{ c.name }} · {{ c.phone || 'Без телефона' }}
           </option>
         </select>
-        <p class="use-value">
-          {{ redemptionValue(coupon) }} · купон № {{ coupon.code }}
-        </p>
-        <p v-if="coupon.restrictions" class="use-restrictions">
-          {{ coupon.restrictions }}
-        </p>
-        <p class="field-help">Проверьте условия и отметьте подтверждения.</p>
-        <label class="check-label"
-          ><input v-model="single" type="checkbox" required />Подтверждаю: на
-          этот фактический прием применяется один купон</label
+        <p v-if="checking" role="status">Проверяем доступность для клиента…</p>
+        <p
+          v-else-if="stepped && eligibility && eligibility !== 'eligible'"
+          class="error"
+          role="alert"
         >
-        <label v-if="coupon.first_visit_only" class="check-label"
-          ><input v-model="first" type="checkbox" required />Подтверждаю: это
-          первое посещение этого специалиста с учетом прежних приемов</label
+          {{
+            eligibilityLabels[eligibility] ||
+            'Не удалось проверить доступность для клиента.'
+          }}
+        </p>
+        <button
+          v-if="stepped && eligibility === 'unavailable'"
+          class="secondary"
+          type="button"
+          @click="checkEligibility"
         >
+          Повторить проверку
+        </button>
+        <div v-show="!stepped || eligibility === 'eligible' || !!frozen">
+          <p class="use-value">
+            {{ redemptionValue(coupon) }} · купон № {{ coupon.code }}
+          </p>
+          <p v-if="coupon.restrictions" class="use-restrictions">
+            {{ coupon.restrictions }}
+          </p>
+          <p class="field-help">Проверьте условия и отметьте подтверждения.</p>
+          <label class="check-label"
+            ><input
+              v-model="single"
+              type="checkbox"
+              :required="!stepped || eligibility === 'eligible'"
+            /><span
+              >Подтверждаю: на этот фактический прием применяется один
+              купон</span
+            ></label
+          >
+          <label v-if="coupon.first_visit_only" class="check-label"
+            ><input
+              v-model="first"
+              type="checkbox"
+              :required="!stepped || eligibility === 'eligible'"
+            /><span
+              >Подтверждаю: это первое посещение этого специалиста с учетом
+              прежних приемов</span
+            ></label
+          >
+        </div>
       </fieldset>
       <p v-if="frozen" class="field-help">
         Результат отправки мог сохраниться. Повторите тот же запрос; после
@@ -259,12 +354,14 @@ onBeforeUnmount(() => {
         Купон недоступен для нового использования.
       </p>
       <button
+        v-show="!stepped || eligibility === 'eligible' || !!frozen"
         class="primary"
         :disabled="
           busy ||
           loading ||
           recipientPending ||
           blocked ||
+          (!frozen && stepped && (checking || eligibility !== 'eligible')) ||
           (!frozen && coupon.status !== 'available')
         "
       >

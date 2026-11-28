@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,180 @@ func redemptionCoupon(t *testing.T, s Store, owner string, in Input) Coupon {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func TestPostgresEligibility(t *testing.T) {
+	t.Parallel()
+	pool := database(t)
+	type args struct {
+		owner  string
+		coupon Coupon
+		client string
+	}
+	seed := func(t *testing.T, login string) args {
+		t.Helper()
+		a, _ := owner(t, pool, login)
+		terms := baseInput()
+		terms.FirstVisitOnly = true
+		return args{owner: a, coupon: redemptionCoupon(t, Store{Pool: pool}, a, terms), client: redemptionClient(t, pool, a, "Тестовый клиент")}
+	}
+	check := func(t *testing.T, got Eligibility, err error, want string, wantErr error, before, after Coupon, historyBefore, historyAfter RedemptionPage) {
+		t.Helper()
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("eligibility error: got %v, want %v", err, wantErr)
+		}
+		if got.Status != want {
+			t.Errorf("status: got %q, want %q", got.Status, want)
+		}
+		// Preview must preserve both the coupon and the independent operation log.
+		if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(historyBefore, historyAfter) {
+			t.Fatal("eligibility changed coupon or history")
+		}
+	}
+	tests := []struct {
+		name    string
+		seed    func(t *testing.T) args
+		want    string
+		wantErr error
+		check   func(*testing.T, Eligibility, error, string, error, Coupon, Coupon, RedemptionPage, RedemptionPage)
+	}{
+		{
+			name: "first visit still needs manual confirmation",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				return seed(t, "eligibility-first")
+			},
+			want:  "eligible",
+			check: check,
+		},
+		{
+			name: "personal limit prevents another use",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-personal")
+				key, _ := newUUID()
+				if _, _, err := (Store{Pool: pool}).Redeem(context.Background(), a.owner, key, RedemptionInput{CouponID: a.coupon.ID, ClientID: a.client, SingleCouponConfirmed: true, FirstVisitConfirmed: true}); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			want:  "personal_limit",
+			check: check,
+		},
+		{
+			name: "cancellation frees the personal limit",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-canceled")
+				s := Store{Pool: pool}
+				key, _ := newUUID()
+				u, _, err := s.Redeem(context.Background(), a.owner, key, RedemptionInput{CouponID: a.coupon.ID, ClientID: a.client, SingleCouponConfirmed: true, FirstVisitConfirmed: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.CancelRedemption(context.Background(), a.owner, u.ID, "Тестовая отмена"); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			want:  "eligible",
+			check: check,
+		},
+		{
+			name: "archived recipient is unavailable",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-archive")
+				if _, err := pool.Exec(context.Background(), `UPDATE clients SET archived=true WHERE specialist_id=$1 AND id=$2`, a.owner, a.client); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			want:  "archived_client",
+			check: check,
+		},
+		{
+			name: "revoked coupon is unavailable",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-revoked")
+				if _, err := (Store{Pool: pool}).Revoke(context.Background(), a.owner, a.coupon.ID, "Тестовый отзыв"); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			want:  "revoked",
+			check: check,
+		},
+		{
+			name: "exhausted coupon is unavailable to another client",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-total")
+				for range 3 {
+					client := redemptionClient(t, pool, a.owner, "Получатель")
+					key, _ := newUUID()
+					if _, _, err := (Store{Pool: pool}).Redeem(context.Background(), a.owner, key, RedemptionInput{CouponID: a.coupon.ID, ClientID: client, SingleCouponConfirmed: true, FirstVisitConfirmed: true}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return a
+			},
+			want:  "total_limit",
+			check: check,
+		},
+		{
+			name: "expired coupon is unavailable",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-expired")
+				if _, err := pool.Exec(context.Background(), `UPDATE coupons SET expires_on=current_date,expires_at=clock_timestamp()-interval '1 second' WHERE specialist_id=$1 AND id=$2`, a.owner, a.coupon.ID); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			want:  "expired",
+			check: check,
+		},
+		{
+			name: "foreign recipient remains hidden",
+			seed: func(t *testing.T) args {
+				t.Helper()
+				a := seed(t, "eligibility-own")
+				b, _ := owner(t, pool, "eligibility-foreign")
+				a.client = redemptionClient(t, pool, b, "Чужой клиент")
+				return a
+			},
+			wantErr: ErrNotFound,
+			check:   check,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			a := tt.seed(t)
+			s := Store{Pool: pool}
+			ctx := context.Background()
+			before, _, err := s.Get(ctx, a.owner, a.coupon.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			historyBefore, err := s.SearchRedemptions(ctx, a.owner, RedemptionSearch{CouponID: a.coupon.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Eligibility(ctx, a.owner, a.coupon.ID, a.client)
+			after, _, readErr := s.Get(ctx, a.owner, a.coupon.ID)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			historyAfter, readErr := s.SearchRedemptions(ctx, a.owner, RedemptionSearch{CouponID: a.coupon.ID})
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			tt.check(t, got, err, tt.want, tt.wantErr, before, after, historyBefore, historyAfter)
+		})
+	}
 }
 func TestPostgresRedemptionLifecycleHTTPAndOwnership(t *testing.T) {
 	pool := database(t)

@@ -71,6 +71,18 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result, err = h.Store.Search(r.Context(), user.ID, in)
+	case strings.HasPrefix(r.URL.Path, "/api/coupons/") && strings.HasSuffix(r.URL.Path, "/eligibility"):
+		if !method(w, r, "POST") {
+			return
+		}
+		var in struct {
+			ClientID string `json:"client_id"`
+		}
+		if !decode(w, r, &in) || !h.lookup(w, r, user.ID) {
+			return
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/coupons/"), "/eligibility")
+		result, err = h.Store.Eligibility(r.Context(), user.ID, id, in.ClientID)
 	case strings.HasPrefix(r.URL.Path, "/api/coupons/") && strings.HasSuffix(r.URL.Path, "/revoke"):
 		if !method(w, r, "POST") {
 			return

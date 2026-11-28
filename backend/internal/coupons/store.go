@@ -17,12 +17,12 @@ const selection = `SELECT c.id::text,c.code,c.discount_type,c.value_minor,c.rest
  to_char(c.expires_on,'YYYY-MM-DD'),c.expires_at,c.referrer_client_id::text,r.name,c.used_count,
  CASE WHEN c.revoked_at IS NOT NULL THEN 'revoked' WHEN c.expires_at<=now() THEN 'expired'
  WHEN c.total_limit IS NOT NULL AND c.used_count>=c.total_limit THEN 'exhausted' ELSE 'available' END AS status,
- c.revoked_at,c.revoke_reason,c.created_at FROM coupons c LEFT JOIN clients r ON r.id=c.referrer_client_id AND r.specialist_id=c.specialist_id `
+ c.revoked_at,c.revoke_reason,c.created_at,c.template_id::text FROM coupons c LEFT JOIN clients r ON r.id=c.referrer_client_id AND r.specialist_id=c.specialist_id `
 
 func scan(row pgx.Row) (Coupon, error) {
 	var c Coupon
 	var value int64
-	err := row.Scan(&c.ID, &c.Code, &c.DiscountType, &value, &c.Restrictions, &c.TotalLimit, &c.PerClientLimit, &c.FirstVisitOnly, &c.ExpiresOn, &c.ExpiresAt, &c.ReferrerClientID, &c.ReferrerName, &c.UsedCount, &c.Status, &c.RevokedAt, &c.RevokeReason, &c.CreatedAt)
+	err := row.Scan(&c.ID, &c.Code, &c.DiscountType, &value, &c.Restrictions, &c.TotalLimit, &c.PerClientLimit, &c.FirstVisitOnly, &c.ExpiresOn, &c.ExpiresAt, &c.ReferrerClientID, &c.ReferrerName, &c.UsedCount, &c.Status, &c.RevokedAt, &c.RevokeReason, &c.CreatedAt, &c.TemplateID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrNotFound
 	}
@@ -68,6 +68,19 @@ func (s Store) Create(ctx context.Context, owner, key string, in Input) (Coupon,
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Coupon{}, false, err
 	}
+	if in.TemplateID != nil {
+		var archived bool
+		err := tx.QueryRow(ctx, `SELECT archived FROM coupon_templates WHERE specialist_id=$1 AND id=$2 FOR SHARE`, owner, *in.TemplateID).Scan(&archived)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Coupon{}, false, ErrInvalid
+		}
+		if err != nil {
+			return Coupon{}, false, err
+		}
+		if archived {
+			return Coupon{}, false, ErrInvalid
+		}
+	}
 	if in.ReferrerClientID != nil {
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM clients WHERE specialist_id=$1 AND id=$2 AND NOT archived)`, owner, *in.ReferrerClientID).Scan(&exists); err != nil {
@@ -87,8 +100,8 @@ func (s Store) Create(ctx context.Context, owner, key string, in Input) (Coupon,
 		if err != nil {
 			return Coupon{}, false, err
 		}
-		command, err := tx.Exec(ctx, `INSERT INTO coupons(id,specialist_id,code,discount_type,value_minor,restrictions,total_limit,per_client_limit,first_visit_only,expires_on,expires_at,referrer_client_id,creation_key,creation_hash)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(specialist_id,code) DO NOTHING`, id, owner, code, in.DiscountType, value, in.Restrictions, in.TotalLimit, in.PerClientLimit, in.FirstVisitOnly, in.ExpiresOn, expires, in.ReferrerClientID, key, hash)
+		command, err := tx.Exec(ctx, `INSERT INTO coupons(id,specialist_id,code,discount_type,value_minor,restrictions,total_limit,per_client_limit,first_visit_only,expires_on,expires_at,referrer_client_id,creation_key,creation_hash,template_id)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(specialist_id,code) DO NOTHING`, id, owner, code, in.DiscountType, value, in.Restrictions, in.TotalLimit, in.PerClientLimit, in.FirstVisitOnly, in.ExpiresOn, expires, in.ReferrerClientID, key, hash, in.TemplateID)
 		if err != nil {
 			return Coupon{}, false, err
 		}
@@ -120,6 +133,9 @@ func (s Store) AllowLookup(ctx context.Context, owner string) (bool, error) {
 	return n <= 120, err
 }
 func (s Store) Search(ctx context.Context, owner string, in Search) (Page, error) {
+	if in.TemplateID != "" && !validUUID(in.TemplateID) {
+		return Page{}, ErrInvalid
+	}
 	if in.Offset < 0 || in.Offset > 100000 {
 		return Page{}, ErrInvalid
 	}
@@ -142,8 +158,8 @@ func (s Store) Search(ctx context.Context, owner string, in Search) (Page, error
 	if in.State != "all" && in.State != "available" && in.State != "expired" && in.State != "revoked" && in.State != "exhausted" {
 		return Page{}, ErrInvalid
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT * FROM (`+selection+`WHERE c.specialist_id=$1 AND ($2='' OR c.code=$2)) AS found
- WHERE ($3='all' OR found.status=$3) AND ($5='all' OR ($5='used' AND found.used_count>0) OR ($5='unused' AND found.used_count=0)) ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.Code, in.State, in.Offset, in.Usage)
+	rows, err := s.Pool.Query(ctx, `SELECT * FROM (`+selection+`WHERE c.specialist_id=$1 AND ($2='' OR c.code=$2) AND ($6='' OR c.template_id=NULLIF($6,'')::uuid)) AS found
+ WHERE ($3='all' OR found.status=$3) AND ($5='all' OR ($5='used' AND found.used_count>0) OR ($5='unused' AND found.used_count=0)) ORDER BY created_at DESC,id DESC LIMIT 51 OFFSET $4`, owner, in.Code, in.State, in.Offset, in.Usage, in.TemplateID)
 	if err != nil {
 		return Page{}, err
 	}
