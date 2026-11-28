@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ClientsPanel from './components/ClientsPanel.vue'
 import CouponsPanel from './components/CouponsPanel.vue'
 import StatisticsPanel from './components/StatisticsPanel.vue'
@@ -9,11 +9,18 @@ type Session = {
   expires_at: string
   csrf_token: string
 }
-const section = ref<'clients' | 'coupons' | 'statistics'>('clients')
-const couponUsage = ref<'all' | 'used' | 'unused'>('all')
-function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
-  couponUsage.value = usage
+const section = ref<'clients' | 'coupons' | 'statistics'>('coupons')
+const couponsPanel = ref<InstanceType<typeof CouponsPanel> | null>(null)
+async function showCoupons(usage: 'all' | 'used' | 'unused' = 'all') {
   section.value = 'coupons'
+  await nextTick()
+  couponsPanel.value?.showList(usage)
+}
+function home(event: MouseEvent) {
+  if (session.value) {
+    event.preventDefault()
+    void showCoupons()
+  }
 }
 const state = ref<'loading' | 'unavailable' | 'guest' | 'member'>('loading')
 const session = ref<Session | null>(null)
@@ -32,6 +39,7 @@ function showGuest(message = '') {
 }
 function acceptSession(value: Session) {
   clearTimeout(expiryTimer)
+  if (session.value?.user.id !== value.user.id) section.value = 'coupons'
   session.value = value
   state.value = 'member'
   error.value = ''
@@ -133,15 +141,57 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page">
-    <header class="header">
-      <a class="brand" href="/" aria-label="Referflow — главная">
-        <img src="/favicon.svg" alt="" width="36" height="36" />
-        <span>referflow</span>
-      </a>
-      <span class="header-note">Кабинет специалиста</span>
+  <div class="page" :class="{ 'member-page': state === 'member' }">
+    <header class="header app-header">
+      <a class="brand" href="/" aria-label="Referflow — главная" @click="home"
+        ><img src="/favicon.svg" alt="" width="32" height="32" /><span
+          >referflow</span
+        ></a
+      >
+      <nav v-if="session" class="cabinet-nav" aria-label="Разделы кабинета">
+        <button
+          type="button"
+          :aria-pressed="section === 'coupons'"
+          @click="section = 'coupons'"
+        >
+          Купоны
+        </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'clients'"
+          @click="section = 'clients'"
+        >
+          Клиенты
+        </button>
+        <button
+          type="button"
+          :aria-pressed="section === 'statistics'"
+          @click="section = 'statistics'"
+        >
+          Статистика
+        </button>
+      </nav>
+      <details v-if="session" class="account-menu">
+        <summary>
+          <span class="account-avatar" aria-hidden="true">{{
+            session.user.name.slice(0, 1).toUpperCase()
+          }}</span><span>Профиль</span>
+        </summary>
+        <div class="account-content">
+          <strong>{{ session.user.name }}</strong>
+          <p class="muted">{{ session.user.login }}</p>
+          <button
+            class="secondary"
+            type="button"
+            :disabled="busy"
+            @click="logout"
+          >
+            {{ busy ? 'Выходим…' : 'Выйти' }}
+          </button>
+        </div>
+      </details>
+      <span v-else class="header-note">Кабинет специалиста</span>
     </header>
-
     <main v-if="state === 'loading'" class="center-state" aria-busy="true">
       <p role="status">Открываем ваш кабинет…</p>
     </main>
@@ -152,35 +202,13 @@ onBeforeUnmount(() => {
         Попробовать снова
       </button>
     </main>
-    <main v-else-if="state === 'guest'" class="login-layout">
-      <section class="welcome" aria-labelledby="welcome-title">
-        <p class="eyebrow"><span class="dot"></span> Хорошие связи</p>
-        <h1 id="welcome-title">
-          Рекомендации<br />начинаются<br /><span>с доверия.</span>
-        </h1>
-        <p class="intro">
-          Ваше пространство для работы с рекомендациями клиентов.
-        </p>
-        <div class="welcome-mark" aria-hidden="true">
-          <span>r</span>
-          <span>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M6 18 18 6M6 6h12v12"
-                stroke="currentColor"
-                stroke-width="1.5"
-              />
-            </svg>
-          </span>
-        </div>
-      </section>
+    <main v-else-if="state === 'guest'" class="simple-login">
       <section class="login-card" aria-labelledby="login-title">
-        <p class="card-label">РАДЫ ВАС ВИДЕТЬ</p>
-        <h2 id="login-title">Вход в кабинет</h2>
-        <p class="muted">Используйте свою учетную запись специалиста.</p>
+        <h1 id="login-title">Вход в кабинет</h1>
+        <p class="muted">Войдите, чтобы выдавать и использовать купоны.</p>
         <form :aria-busy="busy" @submit.prevent="login">
-          <label for="login">Логин</label>
-          <input
+          <label for="login">Логин</label
+          ><input
             id="login"
             v-model="loginName"
             name="login"
@@ -193,8 +221,8 @@ onBeforeUnmount(() => {
             :disabled="busy"
             :aria-describedby="error ? 'login-error' : undefined"
           />
-          <label for="password">Пароль</label>
-          <input
+          <label for="password">Пароль</label
+          ><input
             id="password"
             v-model="password"
             name="password"
@@ -209,101 +237,36 @@ onBeforeUnmount(() => {
           </p>
           <button class="primary" type="submit" :disabled="busy">
             {{ busy ? 'Входим…' : 'Войти' }}
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M6 18 18 6M6 6h12v12"
-                stroke="currentColor"
-                stroke-width="1.5"
-              />
-            </svg>
           </button>
         </form>
-        <p class="login-help">Если нет доступа, обратитесь к администратору.</p>
+        <p class="login-help">Нет доступа? Обратитесь к администратору.</p>
       </section>
     </main>
-    <main v-else-if="session" class="cabinet">
-      <div class="cabinet-heading">
-        <div>
-          <p class="eyebrow"><span class="dot"></span> Личное пространство</p>
-          <h1>Здравствуйте,<br />{{ session.user.name }}.</h1>
-        </div>
-        <button
-          class="secondary"
-          type="button"
-          :disabled="busy"
-          @click="logout"
-        >
-          {{ busy ? 'Выходим…' : 'Выйти' }}
-        </button>
-      </div>
+    <main v-else-if="session" class="cabinet workspace">
+      <h1 class="sr-only">Кабинет специалиста</h1>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <nav class="cabinet-nav" aria-label="Разделы кабинета">
-        <button
-          type="button"
-          :aria-pressed="section === 'clients'"
-          @click="section = 'clients'"
-        >
-          Клиенты
-        </button>
-        <button
-          type="button"
-          :aria-pressed="section === 'coupons'"
-          @click="showCoupons()"
-        >
-          Купоны
-        </button>
-        <button
-          type="button"
-          :aria-pressed="section === 'statistics'"
-          @click="section = 'statistics'"
-        >
-          Статистика
-        </button>
-      </nav>
+      <CouponsPanel
+        v-show="section === 'coupons'"
+        ref="couponsPanel"
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+      />
+      <ClientsPanel
+        v-if="section === 'clients'"
+        :key="session.user.id"
+        :csrf-token="session.csrf_token"
+        @expired="showGuest('Сеанс завершен. Войдите снова.')"
+      />
       <StatisticsPanel
         v-if="section === 'statistics'"
         :key="session.user.id"
         @coupons="showCoupons"
         @expired="showGuest('Сеанс завершен. Войдите снова.')"
       />
-      <CouponsPanel
-        v-else-if="section === 'coupons'"
-        :key="session.user.id"
-        :initial-usage="couponUsage"
-        :csrf-token="session.csrf_token"
-        @expired="showGuest('Сеанс завершен. Войдите снова.')"
-      />
-      <ClientsPanel
-        v-else
-        :key="session.user.id"
-        :csrf-token="session.csrf_token"
-        @expired="showGuest('Сеанс завершен. Войдите снова.')"
-      />
-      <section class="profile" aria-labelledby="profile-title">
-        <div class="avatar" aria-hidden="true">
-          {{ session.user.name.slice(0, 1).toUpperCase() }}
-        </div>
-        <div class="profile-details">
-          <h2 id="profile-title">Ваш профиль</h2>
-          <p>{{ session.user.name }}</p>
-          <p class="muted">{{ session.user.login }}</p>
-        </div>
-        <span class="session-badge"
-          ><span class="dot"></span> Сеанс активен</span
-        >
-      </section>
-      <p class="session-help">
-        Завершайте сеанс после работы на общем устройстве.
-      </p>
     </main>
-    <footer>
-      <span>Referflow</span><span>Сделано для хороших связей</span>
+    <footer class="app-footer">
+      <span>Referflow</span><span>Купоны и рекомендации</span>
     </footer>
   </div>
 </template>

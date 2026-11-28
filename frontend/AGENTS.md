@@ -8,3 +8,5 @@
 - `Caddyfile` belongs to this image. Keep `/api` errors out of the SPA fallback and missing static assets as 404 responses.
 - Checks: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build`.
 - Runtime changes: start the Compose stack, install Chromium with `npx playwright install chromium`, then `npm run test:e2e`. Browser checks target `BASE_URL` or `http://127.0.0.1:8080`.
+
+- Coupon workspace is kept mounted across cabinet sections to preserve draft, selection and idempotency keys. Do not unmount use/history forms when changing coupon tabs: mutation responses must still update the coupon. Logout/session expiry must still destroy private state. See `../docs/interface.md`.

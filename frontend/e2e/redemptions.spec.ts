@@ -25,6 +25,7 @@ async function setup(
   await page.getByLabel('Логин', { exact: true }).fill(login)
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
+  await page.getByRole('button', { name: 'Клиенты', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Карточки клиентов' }),
   ).toBeVisible()
@@ -65,7 +66,7 @@ async function setup(
   await form
     .getByLabel('Найти получателя скидки', { exact: true })
     .fill('Получатель Тестовый')
-  await form.getByRole('button', { name: 'Найти клиента', exact: true }).click()
+  await form.getByRole('button', { name: 'Найти', exact: true }).click()
   await expect(form.locator('#redemption-client option')).toHaveCount(2)
   await form
     .getByLabel('Получатель скидки', { exact: true })
@@ -113,6 +114,7 @@ test('confirm manually, apply, cancel, replace and retain client/coupon audit af
       exact: true,
     }),
   ).toBeDisabled()
+  await page.getByRole('button', { name: 'История', exact: true }).click()
   const history = page.getByRole('region', {
     name: 'История этого купона',
     exact: true,
@@ -129,6 +131,7 @@ test('confirm manually, apply, cancel, replace and retain client/coupon audit af
   await history
     .getByRole('button', { name: 'Подтвердить отмену', exact: true })
     .click()
+  await page.getByRole('button', { name: 'Использовать', exact: true }).click()
   await expect(
     form.getByRole('button', {
       name: 'Подтвердить использование',
@@ -144,6 +147,8 @@ test('confirm manually, apply, cancel, replace and retain client/coupon audit af
   await expect(
     form.getByText('Использование подтверждено.', { exact: true }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'История', exact: true }).click()
+  await page.locator('.coupon-revoke > summary').click()
   await page
     .getByLabel('Причина отзыва', { exact: true })
     .fill('Отзыв после использования: тест')

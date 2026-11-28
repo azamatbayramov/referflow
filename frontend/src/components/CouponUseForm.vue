@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import RedemptionHistory from './RedemptionHistory.vue'
+import QuickClientForm from './QuickClientForm.vue'
 import {
   redemptionRequest,
   RedemptionError,
@@ -26,8 +27,23 @@ const props = defineProps<{
   coupon: Coupon
   csrfToken: string
   refreshToken: number
+  blocked?: boolean
 }>()
-const emit = defineEmits<{ expired: []; changed: [] }>()
+const emit = defineEmits<{
+  expired: []
+  changed: []
+  pending: [pending: boolean]
+}>()
+const addingClient = ref(false),
+  quickPending = ref(false),
+  recipientPending = ref(false)
+function chooseCreated(client: Client) {
+  clients.value = [client]
+  clientId.value = client.id
+  addingClient.value = false
+  quickPending.value = false
+  selectionChanged()
+}
 const query = ref(''),
   clients = ref<Client[]>([]),
   clientId = ref(''),
@@ -38,6 +54,14 @@ const query = ref(''),
   error = ref(''),
   notice = ref(''),
   frozen = ref<Input | null>(null)
+watch(
+  () =>
+    busy.value ||
+    !!frozen.value ||
+    quickPending.value ||
+    recipientPending.value,
+  (value) => emit('pending', value),
+)
 let key = crypto.randomUUID()
 let alive = true
 let controller: AbortController | undefined
@@ -49,7 +73,8 @@ function selectionChanged() {
   key = crypto.randomUUID()
 }
 async function search() {
-  if (busy.value || frozen.value) return
+  if (busy.value || frozen.value || recipientPending.value || props.blocked)
+    return
   controller?.abort()
   const current = new AbortController()
   controller = current
@@ -86,7 +111,8 @@ async function search() {
   }
 }
 async function apply() {
-  if (busy.value || loading.value) return
+  if (busy.value || loading.value || recipientPending.value || props.blocked)
+    return
   busy.value = true
   error.value = ''
   notice.value = ''
@@ -141,37 +167,61 @@ watch(
 onBeforeUnmount(() => {
   alive = false
   controller?.abort()
+  emit('pending', false)
 })
 </script>
 <template>
   <section class="coupon-use" aria-labelledby="coupon-use-title">
     <h4 id="coupon-use-title">Использовать купон</h4>
-    <p class="field-help">
-      Выберите получателя скидки и проверьте условия. При необходимости сначала
-      добавьте карточку в разделе «Клиенты».
-    </p>
+    <p class="field-help">Найдите клиента по имени или телефону.</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="notice" class="success" role="status">{{ notice }}</p>
-    <form
-      class="client-search"
-      role="search"
-      aria-label="Поиск получателя скидки"
-      @submit.prevent="search"
-    >
-      <label for="redemption-client-search">Найти получателя скидки</label>
-      <div class="search-row">
-        <input
-          id="redemption-client-search"
-          v-model="query"
-          maxlength="120"
-          :disabled="busy || !!frozen"
-        /><button class="secondary" :disabled="busy || loading || !!frozen">
-          Найти клиента
-        </button>
-      </div>
-    </form>
-    <form @submit.prevent="apply">
-      <fieldset class="coupon-fields" :disabled="busy || !!frozen">
+    <div v-show="!addingClient">
+      <form
+        class="client-search"
+        role="search"
+        aria-label="Поиск получателя скидки"
+        @submit.prevent="search"
+      >
+        <label for="redemption-client-search">Найти получателя скидки</label>
+        <div class="search-row">
+          <input
+            id="redemption-client-search"
+            v-model="query"
+            maxlength="120"
+            :disabled="busy || !!frozen || recipientPending || blocked"
+          /><button
+            class="secondary"
+            :disabled="
+              busy || loading || !!frozen || recipientPending || blocked
+            "
+          >
+            Найти
+          </button>
+        </div>
+      </form>
+      <button
+        class="text-button add-client-link"
+        type="button"
+        :disabled="busy || !!frozen || recipientPending || blocked"
+        @click="addingClient = true"
+      >
+        + Добавить клиента здесь
+      </button>
+    </div>
+    <QuickClientForm
+      v-if="addingClient"
+      :csrf-token="csrfToken"
+      @created="chooseCreated"
+      @expired="emit('expired')"
+      @pending="quickPending = $event"
+      @cancel="addingClient = false"
+    />
+    <form v-show="!addingClient" @submit.prevent="apply">
+      <fieldset
+        class="coupon-fields"
+        :disabled="busy || !!frozen || recipientPending || blocked"
+      >
         <label for="redemption-client">Получатель скидки</label
         ><select
           id="redemption-client"
@@ -190,10 +240,7 @@ onBeforeUnmount(() => {
         <p v-if="coupon.restrictions" class="use-restrictions">
           {{ coupon.restrictions }}
         </p>
-        <p class="field-help">
-          Условия по услугам проверяет специалист. Полной истории посещений в
-          приложении нет.
-        </p>
+        <p class="field-help">Проверьте условия и отметьте подтверждения.</p>
         <label class="check-label"
           ><input v-model="single" type="checkbox" required />Подтверждаю: на
           этот фактический прием применяется один купон</label
@@ -213,7 +260,11 @@ onBeforeUnmount(() => {
       <button
         class="primary"
         :disabled="
-          busy || loading || (!frozen && coupon.status !== 'available')
+          busy ||
+          loading ||
+          recipientPending ||
+          blocked ||
+          (!frozen && coupon.status !== 'available')
         "
       >
         {{
@@ -225,14 +276,18 @@ onBeforeUnmount(() => {
         }}
       </button>
     </form>
-    <RedemptionHistory
-      v-if="clientId"
-      :client-id="clientId"
-      :csrf-token="csrfToken"
-      :refresh-token="refreshToken"
-      title="История получателя скидки"
-      @expired="emit('expired')"
-      @changed="emit('changed')"
-    />
+    <details v-if="clientId && !addingClient" class="recipient-history">
+      <summary>История клиента</summary>
+      <RedemptionHistory
+        v-if="clientId"
+        :client-id="clientId"
+        :csrf-token="csrfToken"
+        :refresh-token="refreshToken"
+        title="История получателя скидки"
+        @pending="recipientPending = $event"
+        @expired="emit('expired')"
+        @changed="emit('changed')"
+      />
+    </details>
   </section>
 </template>

@@ -66,7 +66,7 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
   await expect(
-    page.getByRole('heading', { name: /Здравствуйте/ }),
+    page.getByRole('heading', { name: 'Купоны', exact: true }),
   ).toBeVisible()
   const cookie = (await context.cookies()).find((item) =>
     item.name.includes('referflow_session'),
@@ -79,7 +79,7 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
   ).toEqual([0, 0])
   await page.reload()
   await expect(
-    page.getByRole('heading', { name: /Здравствуйте/ }),
+    page.getByRole('heading', { name: 'Купоны', exact: true }),
   ).toBeVisible()
   const before = await context.request.get(
     '/api/auth/session?specialist_id=other',
@@ -89,6 +89,7 @@ test('login, reload, CSRF rejection, logout and revoked-cookie rejection', async
     headers: { Origin: new URL(baseURL!).origin },
   })
   expect(rejected.status()).toBe(403)
+  await page.locator('.account-menu > summary').click()
   await page.getByRole('button', { name: 'Выйти', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Вход в кабинет' }),
@@ -121,7 +122,7 @@ test('expired sessions stop API and browser access', async ({
   await page.getByLabel('Пароль', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Войти', exact: true }).click()
   await expect(
-    page.getByRole('heading', { name: /Здравствуйте/ }),
+    page.getByRole('heading', { name: 'Купоны', exact: true }),
   ).toBeVisible()
   const cookie = (await context.cookies()).find((item) =>
     item.name.includes('referflow_session'),

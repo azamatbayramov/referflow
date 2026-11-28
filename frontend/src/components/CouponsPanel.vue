@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import CouponUseForm from './CouponUseForm.vue'
+import CouponShare from './CouponShare.vue'
 import RedemptionHistory from './RedemptionHistory.vue'
 
 type Input = {
@@ -17,7 +18,7 @@ type Coupon = Input & {
   id: string
   code: string
   used_count: number
-  status: string
+  status: 'available' | 'expired' | 'revoked' | 'exhausted'
   expires_at: string | null
   revoked_at: string | null
   revoke_reason: string | null
@@ -50,6 +51,15 @@ const query = ref(''),
   loading = ref(false),
   busy = ref(false)
 const usageRevision = ref(0)
+const tab = ref<'use' | 'share' | 'history'>('use')
+const usePending = ref(false),
+  historyPending = ref(false)
+const searchInput = ref<HTMLInputElement | null>(null)
+const listTitle = ref<HTMLElement | null>(null)
+let listScroll = 0
+const filterCount = computed(
+  () => Number(state.value !== 'all') + Number(usage.value !== 'all'),
+)
 const form = ref(false),
   error = ref(''),
   notice = ref(''),
@@ -165,10 +175,12 @@ async function focusEditor() {
   await nextTick()
   if (!alive) return
   editorTitle.value?.focus({ preventScroll: true })
-  if (window.innerWidth <= 900) editor.value?.scrollIntoView({ block: 'start' })
+  editor.value?.scrollIntoView({ block: 'start' })
 }
 async function create() {
-  if (busy.value) return
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
+  listScroll = window.scrollY
   clientController?.abort()
   clientLoading.value = false
   draft.value = empty()
@@ -186,7 +198,13 @@ async function create() {
   await focusEditor()
 }
 async function open(c: Coupon) {
-  if (busy.value) return
+  if (
+    busy.value ||
+    frozen.value ||
+    ((usePending.value || historyPending.value) && selected.value?.id !== c.id)
+  )
+    return
+  if (!selected.value) listScroll = window.scrollY
   busy.value = true
   error.value = ''
   notice.value = ''
@@ -195,6 +213,7 @@ async function open(c: Coupon) {
     if (!alive) return
     selected.value = detail.coupon
     events.value = detail.events
+    tab.value = 'use'
     form.value = false
     reason.value = ''
     confirmRevoke.value = false
@@ -254,7 +273,8 @@ async function save() {
     await load()
     busy.value = false
     await open(c)
-    notice.value = 'Купон создан.'
+    tab.value = 'share'
+    notice.value = 'Купон выдан.'
   } catch (e) {
     if (alive) {
       if (e instanceof ApiError && e.status === 400) {
@@ -280,7 +300,9 @@ async function revoke() {
     selected.value = c
     await load()
     busy.value = false
+    const previousTab = tab.value
     await open(c)
+    tab.value = previousTab
     notice.value = 'Купон окончательно отозван.'
   } catch (e) {
     if (alive)
@@ -308,14 +330,33 @@ async function refreshUsage() {
           : 'Обновите купон, чтобы проверить счетчик.'
   }
 }
-function close() {
-  if (busy.value) return
+async function close() {
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
   clientController?.abort()
   clientLoading.value = false
   form.value = false
   selected.value = null
   frozen.value = null
   error.value = ''
+  notice.value = ''
+  await nextTick()
+  listTitle.value?.focus({ preventScroll: true })
+  window.scrollTo({ top: listScroll })
+}
+async function showList(nextUsage: 'all' | 'used' | 'unused') {
+  if (busy.value || frozen.value || usePending.value || historyPending.value)
+    return
+  await close()
+  usage.value = nextUsage
+  state.value = 'all'
+  query.value = ''
+  await load()
+}
+defineExpose({ showList })
+function findCoupon() {
+  searchInput.value?.focus()
+  searchInput.value?.scrollIntoView({ block: 'center' })
 }
 function amount(c: Coupon) {
   return `${c.value.replace(/\.00$/, '').replace('.', ',')} ${c.discount_type === 'percent' ? '%' : '₽'}`
@@ -334,99 +375,134 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="clients-section" aria-labelledby="coupons-title">
-    <div class="clients-title-row">
-      <div>
-        <p class="eyebrow"><span class="dot"></span> Рекомендации</p>
-        <h2 id="coupons-title">Купоны</h2>
-      </div>
-      <button class="primary" :disabled="busy" type="button" @click="create">
-        Создать купон <span aria-hidden="true">+</span>
-      </button>
-    </div>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <p v-if="notice" class="success" role="status">{{ notice }}</p>
-    <div class="clients-grid">
-      <div class="clients-list">
-        <form class="client-search" role="search" @submit.prevent="load()">
-          <label for="coupon-search">Номер купона</label>
-          <div class="search-row">
-            <input
-              id="coupon-search"
-              v-model="query"
-              inputmode="numeric"
-              maxlength="20"
-              placeholder="Например, 123456"
-            /><button class="secondary" :disabled="loading">Найти</button>
-          </div>
-          <label for="coupon-state">Показать купоны</label
-          ><select id="coupon-state" v-model="state" @change="load()">
-            <option value="all">Все</option>
-            <option value="available">Доступные</option>
-            <option value="exhausted">Исчерпан общий лимит</option>
-            <option value="expired">Истекшие</option>
-            <option value="revoked">Отозванные</option>
-          </select>
-          <label for="coupon-usage">Применения купона</label>
-          <select id="coupon-usage" v-model="usage" @change="load()">
-            <option value="all">Все купоны</option>
-            <option value="used">Есть неотмененные применения</option>
-            <option value="unused">Нет неотмененных применений</option>
-          </select>
-        </form>
-        <p v-if="loading" role="status" class="muted">Загружаем купоны…</p>
-        <p v-else-if="!items.length" class="empty-clients">
-          Купоны не найдены.
-        </p>
-        <ul class="client-rows">
-          <li v-for="c in items" :key="c.id">
-            <button
-              type="button"
-              :disabled="busy"
-              :aria-pressed="selected?.id === c.id"
-              @click="open(c)"
-            >
-              <span
-                ><strong>№ {{ c.code }} · {{ amount(c) }}</strong
-                ><span class="muted">{{ labels[c.status] }}</span></span
-              ><span class="client-state">Открыть</span>
-            </button>
-          </li>
-        </ul>
-        <button
-          v-if="hasMore"
-          class="secondary"
-          type="button"
-          :disabled="loading"
-          @click="load(false)"
-        >
-          Показать еще
-        </button>
-      </div>
-      <section
-        v-if="form || selected"
-        ref="editor"
-        class="client-editor"
-        aria-labelledby="coupon-editor-title"
-      >
-        <div class="editor-heading">
-          <h3 id="coupon-editor-title" ref="editorTitle" tabindex="-1">
-            {{ form ? 'Новый купон' : `Купон № ${selected?.code}` }}
-          </h3>
-          <button
-            class="secondary"
+  <section class="coupons-workspace" aria-label="Купоны">
+    <div v-show="!form && !selected" class="coupon-list-screen">
+      <div class="clients-title-row workspace-heading">
+        <div>
+          <h2 id="coupons-title" ref="listTitle" tabindex="-1">Купоны</h2>
+          <p class="muted">Выдавайте купоны и отмечайте их использование.</p>
+        </div>
+        <div class="workspace-actions">
+          <button class="secondary" type="button" @click="findCoupon">
+            Использовать купон</button
+          ><button
+            class="primary"
             type="button"
             :disabled="busy"
-            @click="close"
+            @click="create"
           >
-            Закрыть
+            Выдать купон <span aria-hidden="true">+</span>
           </button>
         </div>
+      </div>
+      <form class="coupon-search-bar" role="search" @submit.prevent="load()">
+        <label class="sr-only" for="coupon-search">Номер купона</label
+        ><input
+          id="coupon-search"
+          ref="searchInput"
+          v-model="query"
+          inputmode="numeric"
+          maxlength="20"
+          placeholder="Номер купона"
+        /><button class="primary" :disabled="loading">Найти</button>
+      </form>
+      <details class="coupon-filters">
+        <summary>
+          Фильтры<span v-if="filterCount"> · {{ filterCount }}</span>
+        </summary>
+        <div class="filter-fields">
+          <div>
+            <label for="coupon-state">Показать купоны</label
+            ><select id="coupon-state" v-model="state" @change="load()">
+              <option value="all">Все</option>
+              <option value="available">Доступные</option>
+              <option value="exhausted">Исчерпан общий лимит</option>
+              <option value="expired">Истекшие</option>
+              <option value="revoked">Отозванные</option>
+            </select>
+          </div>
+          <div>
+            <label for="coupon-usage">Применения купона</label
+            ><select id="coupon-usage" v-model="usage" @change="load()">
+              <option value="all">Все купоны</option>
+              <option value="used">Есть неотмененные применения</option>
+              <option value="unused">Нет неотмененных применений</option>
+            </select>
+          </div>
+        </div>
+      </details>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <p v-if="loading" role="status" class="muted">Загружаем купоны…</p>
+      <div v-else-if="!items.length" class="workspace-empty">
+        <h3>
+          {{
+            query || filterCount
+              ? 'Купоны не найдены'
+              : 'Первый купон — начало рекомендации'
+          }}
+        </h3>
+        <p>
+          {{
+            query || filterCount
+              ? 'Проверьте номер или измените фильтры.'
+              : 'Задайте скидку и передайте клиенту ссылку или бумажный купон.'
+          }}
+        </p>
+      </div>
+      <ul class="client-rows coupon-list">
+        <li v-for="c in items" :key="c.id">
+          <button type="button" :disabled="busy" @click="open(c)">
+            <span class="coupon-list-main"
+              ><strong>№ {{ c.code }} · {{ amount(c) }}</strong
+              ><span class="muted">{{ expiry(c) }}</span></span
+            ><span class="coupon-list-side"
+              ><span class="status-chip" :class="`status-${c.status}`">{{
+                labels[c.status]
+              }}</span
+              ><span class="client-state">Открыть →</span></span
+            >
+          </button>
+        </li>
+      </ul>
+      <button
+        v-if="hasMore"
+        class="secondary"
+        type="button"
+        :disabled="loading"
+        @click="load(false)"
+      >
+        Показать еще
+      </button>
+    </div>
+    <section
+      v-if="form || selected"
+      ref="editor"
+      class="coupon-detail-screen"
+      aria-labelledby="coupon-editor-title"
+    >
+      <button
+        class="text-button back-button"
+        type="button"
+        :disabled="busy || !!frozen || usePending || historyPending"
+        @click="close"
+      >
+        ← Назад к купонам
+      </button>
+      <div class="editor-heading">
+        <h2 id="coupon-editor-title" ref="editorTitle" tabindex="-1">
+          {{ form ? 'Выдать купон' : `Купон № ${selected?.code}` }}
+        </h2>
+      </div>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <p v-if="notice" class="success" role="status">{{ notice }}</p>
+      <div v-if="form" class="coupon-create-card">
         <form v-if="form" :aria-busy="busy" @submit.prevent="save">
           <fieldset class="coupon-fields" :disabled="busy || !!frozen">
-            <p class="muted">
-              Номер купона присваивается автоматически после сохранения.
+            <p class="field-help">
+              Номер присвоится автоматически. По умолчанию — один раз на
+              клиента.
             </p>
+            <h4 class="form-group-title">Скидка</h4>
             <label for="discount-type">Вид скидки</label
             ><select id="discount-type" v-model="draft.discount_type">
               <option value="percent">Процент</option>
@@ -449,9 +525,11 @@ onBeforeUnmount(() => {
               }}
               Не больше двух знаков после запятой.
             </p>
-            <label class="check-label"
-              ><input v-model="unlimitedTotal" type="checkbox" />Без общего
-              лимита</label
+            <h4 class="form-group-title">Условия использования</h4>
+            <label for="total-mode">Общий лимит</label
+            ><select id="total-mode" v-model="unlimitedTotal">
+              <option :value="true">Без ограничения</option>
+              <option :value="false">Указать количество</option></select
             ><template v-if="!unlimitedTotal"
               ><label for="total-limit">Всего использований</label
               ><input
@@ -463,9 +541,10 @@ onBeforeUnmount(() => {
                 step="1"
                 required
             /></template>
-            <label class="check-label"
-              ><input v-model="unlimitedPersonal" type="checkbox" />Без лимита
-              на клиента</label
+            <label for="personal-mode">На одного клиента</label
+            ><select id="personal-mode" v-model="unlimitedPersonal">
+              <option :value="false">Указать количество</option>
+              <option :value="true">Без ограничения</option></select
             ><template v-if="!unlimitedPersonal"
               ><label for="personal-limit">Использований на клиента</label
               ><input
@@ -510,7 +589,7 @@ onBeforeUnmount(() => {
               клиентов.
             </p>
             <details class="coupon-referrer">
-              <summary>Кому выдан (необязательно)</summary>
+              <summary>Кто передаст купон (необязательно)</summary>
               <p class="field-help">
                 Клиент, который передаст купон другому человеку. Это не привязка
                 получателя скидки.
@@ -530,7 +609,7 @@ onBeforeUnmount(() => {
                   Искать
                 </button>
               </div>
-              <label for="referrer-client">Кому выдан купон</label
+              <label for="referrer-client">Клиент, которому выдан купон</label
               ><select id="referrer-client" v-model="draft.referrer_client_id">
                 <option :value="null">Не указан</option>
                 <option v-for="c in clients" :key="c.id" :value="c.id">
@@ -549,30 +628,49 @@ onBeforeUnmount(() => {
                 ? 'Сохраняем…'
                 : frozen
                   ? 'Повторить создание'
-                  : 'Сохранить купон'
+                  : 'Выдать купон'
             }}
           </button>
         </form>
-        <template v-else-if="selected">
+      </div>
+      <template v-else-if="selected">
+        <div class="coupon-summary">
           <p class="coupon-amount">{{ amount(selected) }}</p>
-          <p class="session-badge coupon-status">
-            {{ labels[selected.status] }}
+          <span class="status-chip" :class="`status-${selected.status}`">{{
+            labels[selected.status]
+          }}</span>
+          <p class="muted">
+            {{ expiry(selected) }} ·
+            {{
+              selected.first_visit_only
+                ? 'Только первое посещение'
+                : 'Любые посещения'
+            }}
           </p>
-          <dl class="coupon-terms">
-            <div>
-              <dt>Срок</dt>
-              <dd>{{ expiry(selected) }}</dd>
-            </div>
-            <div>
-              <dt>Посещения</dt>
-              <dd>
-                {{
-                  selected.first_visit_only
-                    ? 'Только первое посещение'
-                    : 'Любые посещения'
-                }}
-              </dd>
-            </div>
+        </div>
+        <div class="coupon-view-nav" aria-label="Действия с купоном">
+          <button
+            type="button"
+            :aria-pressed="tab === 'use'"
+            @click="tab = 'use'"
+          >
+            Использовать</button
+          ><button
+            type="button"
+            :aria-pressed="tab === 'share'"
+            @click="tab = 'share'"
+          >
+            Отправить</button
+          ><button
+            type="button"
+            :aria-pressed="tab === 'history'"
+            @click="tab = 'history'"
+          >
+            История
+          </button>
+        </div>
+        <div v-show="tab === 'use'" class="coupon-action-card">
+          <dl class="coupon-terms compact-terms">
             <div>
               <dt>Общий лимит</dt>
               <dd>{{ selected.total_limit ?? 'Без ограничения' }}</dd>
@@ -585,70 +683,38 @@ onBeforeUnmount(() => {
               <dt>Использовано</dt>
               <dd>{{ selected.used_count }}</dd>
             </div>
-            <div v-if="selected.referrer_name">
-              <dt>Кому выдан</dt>
-              <dd>{{ selected.referrer_name }}</dd>
-            </div>
           </dl>
-          <section v-if="selected.restrictions" class="coupon-conditions">
-            <h4>Ограничения по услугам</h4>
-            <p>{{ selected.restrictions }}</p>
-          </section>
-          <div class="coupon-share">
-            <a :href="`/c/${selected.id}`" target="_blank" rel="noreferrer"
-              >Открыть карточку для клиента</a
-            >
-            <p class="field-help">
-              Ссылка, QR, изображение и печать. Данные клиентов и история
-              остаются в кабинете.
-            </p>
-          </div>
           <CouponUseForm
             :key="selected.id"
             :coupon="selected"
             :csrf-token="csrfToken"
             :refresh-token="usageRevision"
+            :blocked="historyPending"
             @expired="emit('expired')"
             @changed="refreshUsage"
+            @pending="usePending = $event"
           />
+        </div>
+        <CouponShare
+          v-if="tab === 'share'"
+          :id="selected.id"
+          :coupon="selected"
+        />
+        <div v-show="tab === 'history'" class="coupon-action-card">
           <RedemptionHistory
             :coupon-id="selected.id"
             :csrf-token="csrfToken"
             :refresh-token="usageRevision"
             title="История этого купона"
+            @pending="historyPending = $event"
             @expired="emit('expired')"
             @changed="refreshUsage"
           />
-          <p v-if="selected.revoked_at" class="error">
-            Отозван {{ new Date(selected.revoked_at).toLocaleString('ru-RU') }}.
-            Причина: {{ selected.revoke_reason }}
-          </p>
-          <form v-else class="coupon-revoke" @submit.prevent="revoke">
-            <h4>Отзыв купона</h4>
-            <p class="field-help">
-              После отзыва новые использования запрещены. Вернуть купон в
-              действие нельзя.
-            </p>
-            <label for="revoke-reason">Причина отзыва</label
-            ><input
-              id="revoke-reason"
-              v-model="reason"
-              required
-              maxlength="500"
-              :disabled="busy"
-            /><label class="check-label"
-              ><input
-                v-model="confirmRevoke"
-                type="checkbox"
-                required
-                :disabled="busy"
-              />Понимаю, что отзыв окончательный</label
-            ><button class="secondary" :disabled="busy || !confirmRevoke">
-              Отозвать купон
-            </button>
-          </form>
           <details class="client-history">
-            <summary>История купона</summary>
+            <summary>Выдача и отзыв</summary>
+            <p v-if="selected.referrer_name">
+              Кто передаст купон: {{ selected.referrer_name }}
+            </p>
             <ol>
               <li v-for="event in events" :key="event.action">
                 {{ event.action === 'created' ? 'Создан' : 'Отозван' }} ·
@@ -657,16 +723,41 @@ onBeforeUnmount(() => {
               </li>
             </ol>
           </details>
-        </template>
-      </section>
-      <div v-else class="client-editor editor-empty">
-        <p class="eyebrow">ХОРОШИЕ РЕКОМЕНДАЦИИ</p>
-        <h3>Найдите купон<br />или создайте новый.</h3>
-        <p class="muted">
-          Условия сохраняются при выдаче. Для другой скидки создайте новый
-          купон.
-        </p>
-      </div>
-    </div>
+          <p v-if="selected.revoked_at" class="error">
+            Отозван {{ new Date(selected.revoked_at).toLocaleString('ru-RU') }}.
+            Причина: {{ selected.revoke_reason }}
+          </p>
+          <details v-else class="coupon-revoke">
+            <summary class="danger-text">Отозвать купон</summary>
+            <form @submit.prevent="revoke">
+              <p class="field-help">
+                Отзыв окончательный. История сохранится, новые использования
+                станут недоступны.
+              </p>
+              <label for="revoke-reason">Причина отзыва</label
+              ><input
+                id="revoke-reason"
+                v-model="reason"
+                required
+                maxlength="500"
+                :disabled="busy"
+              /><label class="check-label"
+                ><input
+                  v-model="confirmRevoke"
+                  type="checkbox"
+                  required
+                  :disabled="busy"
+                />Понимаю, что отзыв окончательный</label
+              ><button
+                class="secondary danger-text"
+                :disabled="busy || !confirmRevoke"
+              >
+                Отозвать купон
+              </button>
+            </form>
+          </details>
+        </div>
+      </template>
+    </section>
   </section>
 </template>
